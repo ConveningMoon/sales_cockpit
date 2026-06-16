@@ -123,7 +123,7 @@ Opcional/avanzado: una campana de monitoreo en LH2 re-dispara el webhook en cada
 
 ## 5. Modelo de datos
 
-Esquema completo en `supabase/migrations/001_sales_cockpit_schema.sql`. El SQL está en la raíz, reubícalo en supabase/migrations/ durante el scaffold. Tablas:
+Esquema completo en `supabase/migrations/001_sales_cockpit_schema.sql`. Tablas:
 - `leads` — entidad central (identidad, perfil scrapeado, clasificacion, estado,
   `raw_profile` jsonb con el payload completo de LH2).
 - `messages` — hilo de conversacion (inbound / outbound). Un trigger mantiene los
@@ -185,19 +185,32 @@ logica: adaptarla.
 
 ---
 
-## 9. Comandos (completar al armar el scaffold)
+## 9. Comandos
 
-- `npm dev` — correr local
-- `npm build` / `npm start`
-- Migraciones Supabase: definir flujo en el Slice 1
+- `pnpm dev` — correr local (puerto 4010, Turbopack)
+- `pnpm build` — build de produccion (limitado en exFAT; ver nota en seccion 10)
+- `pnpm start` — servir build en puerto 4010
+
+**Migraciones Supabase — mecanismo canonico: MCP `apply_migration`.**
+- Todas las migraciones se aplican via MCP de Supabase (`apply_migration`).
+- Antes de cualquier cambio de esquema, usar `list_tables` para verificar el estado actual.
+- No usar `supabase db push` (requiere auth del CLI que no esta configurada).
+- El historial de migraciones queda registrado automaticamente en Supabase al usar `apply_migration`.
 
 ---
 
 ## 10. Estado actual del proyecto
 
-**Greenfield.** Disenado: el esquema (migracion 001) y esta arquitectura. Construido: nada
-todavia. Proximo paso: Slice 1 (Fundaciones).
-**Repositorio nuevo donde ira el proyecto:** https://github.com/ConveningMoon/sales_cockpit.git 
+**Slice 1 completado (2026-06-16).** Fundaciones listas:
+- Next.js 15 (App Router + TS + Tailwind v4) en puerto 4010
+- Clientes Supabase (browser + server) y tipos TypeScript derivados del esquema
+- Router de IA (stub puro — implementacion real en Slice 2)
+- Migracion 001 aplicada: 8 tablas + 3 vistas en Supabase cloud
+- Healthcheck `/api/health` retorna `{"ok": true}` con supabase + ai_router OK
+- Limitacion conocida: `pnpm build` falla en exFAT por `@vercel/nft`; `pnpm dev` funciona correctamente
+
+**Proximo paso: Slice 2 (Capa de IA).**
+**Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git (push pendiente de aprobacion de Dylan)
 
 ---
 
@@ -224,4 +237,7 @@ todavia. Proximo paso: Slice 1 (Fundaciones).
   nuevo del 15-jun-2026): verificar contra docs vigentes antes del Slice 2.
 - Que LH2 pueda hacer POST a `http://localhost:<PORT>` desde la misma PC (probar en Slice 3).
 - Forma exacta del payload del webhook de LH2 (capturar con "Run once").
-- Flujo de migraciones de Supabase preferido (CLI vs panel): confirmar con Dylan en Slice 1.
+- ~~Flujo de migraciones de Supabase preferido (CLI vs panel)~~ **RESUELTO:** se usa el MCP
+  de Supabase (`apply_migration`), scopeado al proyecto `jxqnfamcuuwbmvpfjzqm`. El MCP
+  tambien se usa para inspeccionar el estado de la base antes de cualquier cambio
+  (`list_tables`). No se usa `supabase db push`.
