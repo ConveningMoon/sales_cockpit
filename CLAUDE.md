@@ -333,7 +333,34 @@ logica: adaptarla.
 - Fix dotenv: `APP_PASSWORD` con `$` o `#` en `.env.local` requiere escape `\$` (dotenv-expand
   expande `$VAR`; single quotes no previenen esto). En Vercel, el valor se almacena sin parsing.
 
-**Proximo paso: Slice 5 (Cockpit UI — bandeja, borrador, marcar enviado).**
+**Slice 5a completado (2026-06-18).** Cockpit core — bucle de trabajo diario:
+- shadcn/ui inicializado (New York + zinc + CSS vars): button, textarea, input, label, badge,
+  card, separator, skeleton, tabs, scroll-area + sonner (toasts).
+- `src/lib/utils.ts` (`cn()`), `src/app/globals.css` (CSS vars + @theme inline para Tailwind v4).
+- **Bandeja (`/`):** Server Component. Lista todos los leads activos (excluye perdido/descartado)
+  ordenados por last_activity_at. Tabs [Todos | Por responder]. Badge "Por responder" + fragmento
+  del ultimo mensaje inbound para leads en `leads_awaiting_reply`. Click → ficha.
+- **Ficha (`/leads/[id]`):** Server Component + client islands.
+  - Columna izq (sticky en md+): `LeadProfile` — nombre, headline, cargo, empresa, ubicacion,
+    grupo, web, summary (max 600 chars).
+  - Columna der: `FichaClient` (client) — `MessageThread` + `PasteBox` + `DraftPanel`.
+  - `PasteBox`: pega mensaje inbound → `POST /api/leads/[id]/messages` → genera borrador Sonnet 4.6
+    con spinner (Skeleton) mientras genera.
+  - `DraftPanel`: textarea editable + boton copiar (clipboard API + toast) + boton marcar enviado
+    → `POST /api/leads/[id]/send` → toast de confirmacion + redirect a bandeja.
+- **Alta manual (`/leads/new`):** formulario (nombre*, cargo, empresa, ciudad, pais, headline,
+  summary) → `POST /api/leads` → redirige a `/leads/[id]`.
+- **Nuevos endpoints:**
+  - `POST /api/leads` — crea lead con `lh_id = manual_<uuid>`; tipo `LeadInsert` completo.
+  - `POST /api/leads/[id]/send` — inserta outbound via `insertMessage()` compartido
+    (mismo que `messages/route.ts`) + marca draft `sent`. `last_outbound_at` lo actualiza
+    el trigger de DB; no se duplica logica.
+- `src/lib/leads/messages.ts` — `insertMessage()`: funcion compartida para insertar mensajes;
+  la usan `/messages/route.ts` (direction outbound) y `/send/route.ts`.
+- Responsive: mobile-first, layout 2 columnas en md+, apilado vertical en mobile.
+- TypeScript limpio + lint clean; deploy Vercel exitoso (verificado via GitHub statuses).
+
+**Proximo paso: Slice 5b (dropdown de modelo + toggle web search; follow-ups vencidos).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
@@ -348,8 +375,11 @@ logica: adaptarla.
    real. **COMPLETADO.** (El webhook fue reemplazado por ingesta manual en la reestructuracion.)
 4. **Auto-borrador + ingesta manual:** endpoint `POST /api/leads/[id]/messages`, servicio
    `lib/ai/draft.ts`, prompt `prompts/respuesta-lead.md`. Verificado con lead real. **COMPLETADO.**
-5. **Cockpit:** bandeja (`leads_awaiting_reply`) con borrador + perfil + editar + copiar +
-   marcar enviado; caja de pegado para turnos siguientes; follow-ups vencidos.
+5. **Cockpit:**
+   - **5a:** bandeja (todos + por responder), ficha (perfil + hilo + paste + borrador + marcar
+     enviado), alta manual. Layout responsive 2-col. **COMPLETADO.**
+   - **5b (pendiente):** dropdown de modelo + toggle web search por generacion de borrador;
+     vista follow-ups vencidos.
 6. **Pipeline batch:** subir CSV -> clasificar -> cachear market_data -> generar 3 mensajes
    por lead -> exportar CSV.
 
@@ -369,7 +399,14 @@ logica: adaptarla.
 - ~~Contrasena inicial~~ **RESUELTO:** password fuerte seteado. Fix dotenv: `\$` para escapar
   `$` en `.env.local` (dotenv-expand lo expande sin escape).
 - ~~Diseno de la pantalla del cockpit para Slice 4~~ **RESUELTO:** flujo via endpoint API
-  (`POST /api/leads/[id]/messages`); UI viene en Slice 5.
+  (`POST /api/leads/[id]/messages`); UI implementada en Slice 5a.
+- ~~Cockpit UI~~ **RESUELTO (Slice 5a):** bandeja, ficha, borrador, alta manual implementados.
+  Pendiente para 5b: selector de modelo + toggle web search + follow-ups vencidos.
+- **shadcn + Tailwind v4:** `pnpm dlx shadcn@latest init -y` es interactivo (no acepta flags
+  `--style`/`--base-color`). Solucion: crear `components.json` manualmente, instalar deps
+  (`class-variance-authority clsx tailwind-merge lucide-react`) y luego `shadcn add <componente>`.
+  El bloque `@theme inline` en `globals.css` es necesario para que Tailwind v4 reconozca
+  `bg-primary`, `text-foreground`, etc. como utility classes (mapea CSS vars → color tokens).
 - **Kimi K2.6 en borradores:** vuelca reasoning en `content` via OpenRouter. Causa que el
   borrador sea el chain-of-thought completo, no el mensaje. No usar Kimi como override para
   `task_type: "draft"`. Documentado en seccion 3.
