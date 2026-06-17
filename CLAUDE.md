@@ -60,14 +60,29 @@ LinkedIn (riesgo de baneo, sin beneficio).
 
 ---
 
-## 3. Despliegue e IA
+## 3. Despliegue, auth e IA
 
-**Despliegue: local-first (por ahora).** La app corre localmente en la PC de Dylan cuando
-trabaja. Razon: las campanas de LH2 solo corren cuando Dylan enciende su PC y las arranca
-manualmente, asi que el webhook solo necesita estar disponible en ese momento. No hay
-despliegue 24/7 en la nube por ahora. Supabase (cloud) es la DB; la app local se conecta a
-ella normalmente. LH2 corre en la misma PC, asi que puede hacer POST a
-`http://localhost:<PORT>/api/lh-webhook`.
+**Despliegue: Vercel (a partir de la reestructuracion pre-Slice 4).**
+La app corre en Vercel (HTTPS). Supabase es la DB cloud. El flujo de ingesta de respuestas
+pasa a ser manual (pegado en el cockpit), no por webhook. `pnpm dev` sigue siendo el entorno
+de desarrollo local.
+
+**Auth single-user: password + cookie HMAC.**
+- Un middleware de Next.js corre en Edge y protege todas las rutas excepto `/login` y `/api/auth/*`.
+- Login: `POST /api/auth/login` — verifica `APP_PASSWORD` con `timingSafeEqual` (tiempo constante),
+  rate-limit de 10 intentos / 15 min por IP, delay minimo de 500 ms en fallos, devuelve
+  cookie `app-session` firmada con HMAC-SHA256 (Web Crypto) con expiracion de 7 dias.
+- Session token: JWT minimo (`header.payload.signature`) — firma verificada con `crypto.subtle.verify`
+  (constant-time) + check de expiracion. `src/lib/auth/session.ts` usa solo Web Crypto (edge-safe).
+- Rutas `/dev/*` y `/api/dev*` redirigen a `/` en produccion (Vercel).
+- Env vars de auth: `APP_PASSWORD` (la contrasena), `APP_SECRET` (32 bytes hex para HMAC, no cambiar).
+
+**Seguridad de datos (CRITICO — RLS apagado en DB):**
+- `SUPABASE_SERVICE_ROLE_KEY` permanece **solo en el servidor** (env var privada, nunca `NEXT_PUBLIC_*`).
+- `SUPABASE_URL` es privada (`SUPABASE_URL`, no `NEXT_PUBLIC_SUPABASE_URL`).
+- **Ningun acceso a DB client-side.** Todo acceso a datos pasa por endpoints server-side autenticados.
+- El cliente browser de Supabase (anon key) fue eliminado. No recrear.
+- Cualquier endpoint de datos que no pase por el middleware de auth es un bug de seguridad.
 
 **Inferencia: dos proveedores (Slice 2 — IMPLEMENTADO).**
 - **Anthropic directo** via `@anthropic-ai/sdk` + `ANTHROPIC_API_KEY`. Modelo default para
@@ -102,24 +117,30 @@ fallback de seguridad.
 **Turbopack + Windows:** `@anthropic-ai/sdk` y `openai` usan imports `node:*` que generan
 nombres de archivo invalidos en Windows. Fix: `serverExternalPackages` en `next.config.ts`.
 
+**Fix exFAT (Windows local):** `scripts/fix-exfat.cjs` parchea `fs.readlink` y `fs.realpath`
+para convertir EISDIR → EINVAL. Se carga via `node-options=--require ./scripts/fix-exfat.cjs`
+en `.npmrc`. El script tiene guard `if (process.platform !== 'win32') return;` — es no-op en
+Linux (Vercel) y macOS.
+
 ---
 
 ## 4. Arquitectura — los dos flujos
 
 ### Flujo entrante (diario — el dolor principal a eliminar)
-1. Un lead responde en una campana de LH2 -> el plugin "Send replied to Webhook" hace POST
-   a `/api/lh-webhook` con perfil + texto de la respuesta.
-2. La app valida el secreto, hace upsert del lead y anexa el mensaje
-   (`messages`, direction = inbound).
-3. La app genera **automaticamente** un borrador de respuesta (router -> Sonnet) usando:
+1. Un lead responde en LinkedIn → Dylan lo ve en LH2.
+2. Dylan abre el cockpit, selecciona o crea el lead, pega la ultima respuesta del lead.
+3. La app hace upsert del lead y anexa el mensaje (`messages`, direction = inbound)
+   usando `src/lib/leads/ingest.ts` (libreria compartida con el flujo batch).
+4. La app genera **automaticamente** un borrador de respuesta (router -> Sonnet) usando:
    reglas de voz + perfil del lead + hilo completo. Se guarda en `drafts` (status = pending).
-4. En el cockpit, Dylan ve el borrador junto al perfil, lo edita si hace falta, lo copia,
+5. Dylan ve el borrador junto al perfil, lo edita si hace falta, lo copia,
    lo envia **a mano en LinkedIn**, y marca "enviado"
    (se anexa como `messages`, direction = outbound).
 
-Turnos siguientes: como Dylan responde dentro de LinkedIn, hay una caja para pegar la
-ultima linea del lead -> genera borrador (la app ya tiene perfil + historial).
-Opcional/avanzado: una campana de monitoreo en LH2 re-dispara el webhook en cada respuesta.
+Nota: el webhook de LH2 (`/api/lh-webhook`) fue eliminado en la reestructuracion pre-Slice 4.
+La ingesta es manual via el cockpit. El parser LH2 (`src/lib/lh/parser.ts`) y la libreria
+`src/lib/leads/ingest.ts` siguen siendo la logica central — reutilizables para la ingesta
+manual y el flujo batch (CSV).
 
 ### Flujo batch (outreach — periodico)
 1. Dylan sube el CSV scrapeado de LH2.
@@ -179,13 +200,12 @@ logica: adaptarla.
 
 ## 7. Integracion Linked Helper 2 (LH2)
 
-- Plan: Standard. Webhooks limitados a 20 perfiles/dia (suficiente; el excedente se maneja
-  a mano).
-- "Send replied to Webhook" -> POST a `/api/lh-webhook`.
-- **Captura el payload real primero.** Antes de escribir el parser, usa "Run once" en LH2 y
-  registra el JSON exacto que envia (tiene campos de numero variable). No asumas la forma.
-- Endpoint protegido con un secreto (query param o header).
-- Import/export por CSV para el flujo batch.
+- Plan: Standard.
+- El webhook de LH2 fue eliminado. La ingesta de respuestas es manual (pegado en el cockpit).
+- Import/export por CSV para el flujo batch (Slice 6).
+- El parser (`src/lib/lh/parser.ts`) sigue siendo la fuente de verdad para el mapeo de
+  campos LH2 → tabla `leads`. Se reutiliza para el import CSV.
+- Formato del payload de LH2 documentado en la seccion 10 (captura real de Slice 3).
 
 ---
 
@@ -195,16 +215,19 @@ logica: adaptarla.
 - Acceso a DB centralizado (no SQL disperso); tipos derivados del esquema.
 - Toda llamada de IA pasa por el router y se registra en `ai_usage`.
 - Strings visibles al usuario en espanol neutro latino.
-- Manejo de errores explicito en el webhook y en las llamadas de IA.
+- Manejo de errores explicito en las llamadas de IA y en todos los endpoints.
 - Secretos en variables de entorno; nunca en el repo.
+- **UI responsiva:** todas las pantallas del cockpit deben funcionar bien en viewport movil
+  (375px+) y escritorio. Usar Tailwind con breakpoints `sm:` / `md:` / `lg:`.
+- **Sin acceso a DB client-side:** todo acceso a datos pasa por Server Actions o API routes
+  protegidos por el middleware de auth.
 
 ---
 
 ## 9. Comandos
 
 - `pnpm dev` — correr local (puerto 4010, Turbopack)
-- `pnpm build` — build de produccion (limitado en exFAT; ver nota en seccion 10)
-- `pnpm start` — servir build en puerto 4010
+- `pnpm start` — servir build en puerto 4010 (build lo hace Vercel; no se corre localmente)
 
 **Migraciones Supabase — mecanismo canonico: MCP `apply_migration`.**
 - Todas las migraciones se aplican via MCP de Supabase (`apply_migration`).
@@ -218,10 +241,9 @@ logica: adaptarla.
 
 **Slice 1 completado (2026-06-16).** Fundaciones listas:
 - Next.js 15 (App Router + TS + Tailwind v4) en puerto 4010
-- Clientes Supabase (browser + server) y tipos TypeScript derivados del esquema
+- Clientes Supabase (server) y tipos TypeScript derivados del esquema
 - Migracion 001 aplicada: 8 tablas + 3 vistas en Supabase cloud
 - Healthcheck `/api/health` retorna `{"ok": true}` con supabase + ai_router OK
-- Limitacion conocida: `pnpm build` falla en exFAT por `@vercel/nft`; `pnpm dev` funciona correctamente
 
 **Slice 2 completado (2026-06-17).** Capa de IA lista:
 - Router multi-proveedor: Anthropic directo + OpenRouter (`lib/ai/router.ts`)
@@ -229,21 +251,33 @@ logica: adaptarla.
 - Dos providers implementados: `AnthropicProvider` y `OpenRouterProvider` (`lib/ai/provider.ts`)
 - System prompt base ITMANO en espanol neutro latino (`lib/ai/voice.ts`)
 - Logging de todas las llamadas en `ai_usage`; vista `ai_spend_monthly` verificada
-- Playground de pruebas en `/dev/playground` (solo modo desarrollo)
+- Playground de pruebas en `/dev/playground` (solo modo desarrollo; protegido por auth + NODE_ENV)
 - Tests manuales verificados: Sonnet 4.6 OK, Kimi K2.6 OK, web search Claude OK ($0.01/busq), web search OpenRouter OK ($0.005/req)
 - Fix Turbopack/Windows: `serverExternalPackages` en `next.config.ts`
 
-**Slice 3 completado (2026-06-17).** Ingesta webhook LH2 lista:
-- `/api/lh-webhook` con secreto en `.env.local` (`LH_WEBHOOK_SECRET`), acepta `?secret=` o header `x-webhook-secret`
-- Parser `src/lib/lh/parser.ts`: extrae lead (mapeo campos LH2 → tabla) + 2 mensajes del hilo (outbound de Dylan + inbound del lead)
-- Upsert del lead por `lh_id`; no degrada etapas activas avanzadas; re-activa `perdido`/`descartado` a `respondio`
-- Inserta mensajes con idempotencia por `(lead_id, sent_at)`; trigger actualiza `last_*_at` del lead automaticamente
-- Errores explícitos: 401 (secreto invalido), 400 (payload sin `lh_id` o sin `replied_message_1_text`), 500 (DB)
-- Captura dev: graba payload crudo a `logs/lh-webhook-capture.json` (gitignored)
-- Verificado con payload real: Miguel Mozos ingresado, 2 mensajes en DB, aparece en `leads_awaiting_reply`
-- LH2 → `http://localhost:4010` confirmado funcionando (Axios/0.27.2, misma PC)
+**Slice 3 completado (2026-06-17).** Ingesta webhook LH2 lista (captura del payload real):
+- Captura payload real de LH2 → documentado en tabla de mapeo de esta seccion
+- Parser `src/lib/lh/parser.ts` → mapeo LH2 → tabla `leads` + extraccion de mensajes
+- Verificado con lead real: Miguel Mozos (lh_id=1160), 2 mensajes, `leads_awaiting_reply` OK
+- El webhook `/api/lh-webhook` fue **eliminado** en la reestructuracion pre-Slice 4
 
-**Shape real del payload de LH2 (`CheckForReplies`):**
+**Reestructuracion pre-Slice 4 completada (2026-06-17).**
+- Despliegue cambiado de local-first a Vercel
+- Auth single-user implementada: middleware Edge, cookie HMAC con expiracion, timingSafeEqual,
+  rate-limit + delay en fallos, sesion de 7 dias
+  - `src/lib/auth/session.ts` — Web Crypto (edge-safe)
+  - `src/middleware.ts` — protege todas las rutas; excluye `/login` y `/api/auth/*`
+  - `src/app/login/page.tsx` — formulario de login
+  - `src/app/api/auth/login/route.ts` — endpoint de login
+  - `src/app/api/auth/logout/route.ts` — endpoint de logout
+- Libreria compartida de ingesta: `src/lib/leads/ingest.ts`
+  (upsertLead, insertMessages, computeLeadStatus, PROTECTED_STATUSES)
+- Eliminado: `/api/lh-webhook`, cliente browser Supabase (`src/lib/supabase/client.ts`)
+- `NEXT_PUBLIC_SUPABASE_URL` renombrado a `SUPABASE_URL` (privado)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `LH_WEBHOOK_SECRET` eliminados de `.env.local`
+- `scripts/fix-exfat.cjs` ahora tiene guard de plataforma (`platform !== 'win32'`) — no-op en Vercel
+
+**Shape real del payload de LH2 (`CheckForReplies`) — capturado en Slice 3:**
 - ~270 campos por perfil; numerados (organization_1..10, education_1..3, etc.)
 - Campos clave: `lh_id` (id interno de LH), `replied_message_1_text` (inbound, el disparador),
   `last_received_message_text` (outbound de Dylan = lo recibido por el lead), `cs_city`, `cs_country`
@@ -269,7 +303,7 @@ logica: adaptarla.
 | `cs_city` / `cs_country` | idem | Ya clasificados en LH2 |
 | body completo | `raw_profile` | jsonb (incluye email, avatar, campaign_name, cs_parrafo_mercado, etc.) |
 
-**Proximo paso: Slice 4 (Auto-borrador al ingerir inbound).**
+**Proximo paso: Slice 4 (Auto-borrador al ingerir inbound; ingesta manual via cockpit).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git (push pendiente de aprobacion de Dylan)
 
 ---
@@ -277,15 +311,14 @@ logica: adaptarla.
 ## 11. Roadmap por slices
 
 1. **Fundaciones:** scaffold Next.js (App Router + TS + Tailwind v4 + shadcn/ui), conectar
-   Supabase + aplicar migracion 001, variables de entorno, auth/proteccion local, cablear y
-   verificar el Agent SDK, healthcheck.
-2. **Capa de IA:** ~~modulo router (Agent SDK; Haiku clasifica / Sonnet genera), system
-   prompts con voz neutro latino + reglas ITMANO, logging en `ai_usage`.~~ **COMPLETADO.**
-   Multi-proveedor (Anthropic + OpenRouter), 5 modelos, web search, caching, playground.
-3. **Ingesta webhook:** ~~`/api/lh-webhook` con secreto; capturar el payload real de LH2
-   primero; upsert lead + anexar mensaje.~~ **COMPLETADO.** Parser, upsert, idempotencia,
-   errores 401/400/500, verificado con payload real de LH2.
-4. **Auto-borrador:** al ingerir un inbound, generar y guardar el borrador.
+   Supabase + aplicar migracion 001, variables de entorno, healthcheck. **COMPLETADO.**
+2. **Capa de IA:** multi-proveedor (Anthropic + OpenRouter), 5 modelos, web search, caching,
+   playground, logging en `ai_usage`. **COMPLETADO.**
+3. **Ingesta LH2:** parser campos LH2 → leads, captura payload real, verificacion con lead
+   real. **COMPLETADO.** (El webhook fue reemplazado por ingesta manual en la reestructuracion.)
+4. **Auto-borrador + ingesta manual:** endpoint de ingesta manual (form en cockpit para pegar
+   reply del lead), upsert lead, insertar mensaje, generar borrador con Sonnet y guardarlo en
+   `drafts` (status = pending).
 5. **Cockpit:** bandeja (`leads_awaiting_reply`) con borrador + perfil + editar + copiar +
    marcar enviado; caja de pegado para turnos siguientes; follow-ups vencidos.
 6. **Pipeline batch:** subir CSV -> clasificar -> cachear market_data -> generar 3 mensajes
@@ -295,15 +328,15 @@ logica: adaptarla.
 
 ## 12. Por verificar / preguntas abiertas
 
-- ~~Autenticacion del Agent SDK con la suscripcion y mecanica del credito mensual~~ **RESUELTO
-  (Slice 2):** se usa API key (`ANTHROPIC_API_KEY`) directamente via `@anthropic-ai/sdk`. El
-  "Agent SDK" de la suscripcion no se usa; la autenticacion es por API key prepago.
-- ~~Que LH2 pueda hacer POST a `http://localhost:<PORT>` desde la misma PC~~ **RESUELTO (Slice 3):**
-  LH2 usa Axios/0.27.2 y apunta a `http://localhost:4010/api/lh-webhook?secret=...`. Funciona sin
-  configuracion adicional (misma PC). Secreto en `LH_WEBHOOK_SECRET` de `.env.local`.
-- ~~Forma exacta del payload del webhook de LH2~~ **RESUELTO (Slice 3):** documentado en seccion 10.
-  Captura dev en `logs/lh-webhook-capture.json` (gitignored).
-- ~~Flujo de migraciones de Supabase preferido (CLI vs panel)~~ **RESUELTO:** se usa el MCP
-  de Supabase (`apply_migration`), scopeado al proyecto `jxqnfamcuuwbmvpfjzqm`. El MCP
-  tambien se usa para inspeccionar el estado de la base antes de cualquier cambio
-  (`list_tables`). No se usa `supabase db push`.
+- ~~Autenticacion del Agent SDK~~ **RESUELTO (Slice 2):** API key directa.
+- ~~LH2 → localhost~~ **RESUELTO (Slice 3):** funcionaba con Axios/0.27.2. Ya no aplica
+  (webhook eliminado; ingesta es manual).
+- ~~Forma exacta del payload del webhook de LH2~~ **RESUELTO (Slice 3):** documentado en
+  seccion 10.
+- ~~Flujo de migraciones~~ **RESUELTO:** MCP `apply_migration` + `list_tables`.
+- ~~Auth mecanismo~~ **RESUELTO (reestructuracion pre-Slice 4):** password + cookie HMAC.
+- ~~Despliegue local vs. Vercel~~ **RESUELTO:** Vercel. `pnpm dev` para desarrollo local.
+- ~~exFAT fix en Vercel~~ **RESUELTO:** guard de plataforma en `fix-exfat.cjs`; no-op en Linux.
+- **Contrasena inicial:** Dylan debe reemplazar `APP_PASSWORD=CHANGE_ME_...` en `.env.local`
+  y en Vercel con una contrasena fuerte (min 16 caracteres, alfanumerica + simbolos).
+- Diseno de la pantalla del cockpit para el flujo de ingesta manual (Slice 4).

@@ -167,23 +167,28 @@ export interface AiSpendMonthly {
   cost_usd: number | null;
 }
 
+// Supabase v2 requiere que Row/Insert/Update extiendan Record<string, unknown> para la inferencia
+// de tipos genéricos (GenericTable). La intersección con Row<T> lo garantiza sin alterar las interfaces.
+type Row<T> = T & Record<string, unknown>;
+
 // Tipo para el cliente Supabase tipado
 export interface Database {
   public: {
     Tables: {
-      leads: { Row: Lead; Insert: LeadInsert; Update: Partial<LeadInsert> };
-      messages: { Row: Message; Insert: MessageInsert; Update: Partial<MessageInsert> };
-      drafts: { Row: Draft; Insert: DraftInsert; Update: Partial<DraftInsert> };
-      outreach_sequence: { Row: OutreachSequence; Insert: OutreachSequenceInsert; Update: Partial<OutreachSequenceInsert> };
-      market_data: { Row: MarketData; Insert: MarketDataInsert; Update: Partial<MarketDataInsert> };
-      batches: { Row: Batch; Insert: BatchInsert; Update: Partial<BatchInsert> };
-      followups: { Row: Followup; Insert: FollowupInsert; Update: Partial<FollowupInsert> };
-      ai_usage: { Row: AiUsage; Insert: AiUsageInsert; Update: Partial<AiUsageInsert> };
+      leads: { Row: Row<Lead>; Insert: Row<LeadInsert>; Update: Row<Partial<LeadInsert>>; Relationships: [] };
+      messages: { Row: Row<Message>; Insert: Row<MessageInsert>; Update: Row<Partial<MessageInsert>>; Relationships: [] };
+      drafts: { Row: Row<Draft>; Insert: Row<DraftInsert>; Update: Row<Partial<DraftInsert>>; Relationships: [] };
+      outreach_sequence: { Row: Row<OutreachSequence>; Insert: Row<OutreachSequenceInsert>; Update: Row<Partial<OutreachSequenceInsert>>; Relationships: [] };
+      market_data: { Row: Row<MarketData>; Insert: Row<MarketDataInsert>; Update: Row<Partial<MarketDataInsert>>; Relationships: [] };
+      batches: { Row: Row<Batch>; Insert: Row<BatchInsert>; Update: Row<Partial<BatchInsert>>; Relationships: [] };
+      followups: { Row: Row<Followup>; Insert: Row<FollowupInsert>; Update: Row<Partial<FollowupInsert>>; Relationships: [] };
+      ai_usage: { Row: Row<AiUsage>; Insert: Row<AiUsageInsert>; Update: Row<Partial<AiUsageInsert>>; Relationships: [] };
     };
     Views: {
-      leads_awaiting_reply: { Row: LeadAwaitingReply };
-      followups_due: { Row: FollowupDue };
-      ai_spend_monthly: { Row: AiSpendMonthly };
+      leads_awaiting_reply: { Row: Row<LeadAwaitingReply>; Relationships: [] };
+      followups_due: { Row: Row<FollowupDue>; Relationships: [] };
+      ai_spend_monthly: { Row: Row<AiSpendMonthly>; Relationships: [] };
     };
+    Functions: Record<never, never>;
   };
 }

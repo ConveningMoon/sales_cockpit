@@ -1,6 +1,9 @@
 'use strict';
-// En exFAT, readlink devuelve EISDIR para archivos normales (en lugar de EINVAL).
+// En exFAT (Windows), readlink devuelve EISDIR para archivos normales en lugar de EINVAL.
 // Este parche convierte EISDIR → EINVAL para que Node.js continúe normalmente.
+// En Linux (Vercel, CI) y macOS este error no ocurre — el script termina inmediatamente.
+if (process.platform !== 'win32') return;
+
 const fs = require('fs');
 
 function patchAsyncFn(original, onEisdir) {
