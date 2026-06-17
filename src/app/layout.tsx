@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "ITMANO Sales Cockpit",
@@ -11,8 +12,9 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="es">
-      <body className="min-h-screen bg-white text-gray-900 antialiased">
+      <body className="min-h-screen bg-background text-foreground antialiased">
         {children}
+        <Toaster position="bottom-right" richColors closeButton />
       </body>
     </html>
   );
