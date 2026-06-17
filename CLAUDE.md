@@ -108,11 +108,17 @@ y `supportsCaching`. Anadir modelos aqui; el router los elige por id.
 - Anthropic: nativo via `cache_control: {type:"ephemeral"}` en el bloque system.
 - OpenRouter: automatico para Claude/Gemini/DeepSeek. Kimi K2.6 no soporta caching.
 
-**Nota sobre Kimi K2.6:** es un modelo de razonamiento. Usa el campo `reasoning` para su
-pensamiento interno y `content` para la respuesta final. Con `maxTokens` bajo (<512) puede
-quedarse en la fase de razonamiento sin llegar a `content`. El router usa 2048 por defecto;
-esto es suficiente para la mayoria de tareas. El provider extrae `content ?? reasoning` como
-fallback de seguridad.
+**Nota sobre Kimi K2.6 (comportamiento real verificado en Slice 4):**
+- Via OpenRouter, Kimi K2.6 vuelca su razonamiento completo en el campo `content` — no usa un
+  campo `reasoning` separado. Esto hace que tareas de generacion de texto libre (como borradores)
+  devuelvan el chain-of-thought completo en vez del mensaje final.
+- **Kimi K2.6 NO es apto como override de modelo para borradores** (`task_type: "draft"`).
+- Si el prompt exige una respuesta estructurada (clasificacion JSON, etc.) puede funcionar si
+  el formato fuerza la salida. Verificar caso a caso.
+- El guard `if (!content.trim())` en `draft.ts` NO detecta este problema porque `content`
+  no viene vacio — viene con el razonamiento. Limitacion documentada, sin workaround en Slice 4.
+- Para borradores: usar siempre Sonnet 4.6 (default). El override de modelo queda disponible
+  pero es responsabilidad del operador verificar compatibilidad.
 
 **Turbopack + Windows:** `@anthropic-ai/sdk` y `openai` usan imports `node:*` que generan
 nombres de archivo invalidos en Windows. Fix: `serverExternalPackages` en `next.config.ts`.
@@ -303,8 +309,32 @@ logica: adaptarla.
 | `cs_city` / `cs_country` | idem | Ya clasificados en LH2 |
 | body completo | `raw_profile` | jsonb (incluye email, avatar, campaign_name, cs_parrafo_mercado, etc.) |
 
-**Proximo paso: Slice 4 (Auto-borrador al ingerir inbound; ingesta manual via cockpit).**
-**Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git (push pendiente de aprobacion de Dylan)
+**Slice 4 completado (2026-06-17).** Borrador on-demand + endpoint de ingesta manual:
+- Servicio `src/lib/ai/draft.ts`:
+  - Lee `prompts/respuesta-lead.md` lazy (primera llamada) y cachea en memoria.
+  - System prompt = `ITMANO_BASE_SYSTEM_PROMPT` + `respuesta-lead.md` (cache_control ephemeral).
+  - User message: perfil completo (summary hasta 1500 chars) + `cs_parrafo_mercado` de
+    `raw_profile` + hilo cronologico de `messages`.
+  - maxTokens = 2048 uniforme (deja margen para razonamiento de Kimi/modelos thinking).
+  - Guarda en `drafts` (status='pending', trigger='manual') y registra en `ai_usage`.
+  - Guard: si `content` vacio → error claro (no enviar reasoning como borrador).
+- Endpoint `POST /api/leads/[id]/messages` (detras de auth):
+  - Body: `{ direction, body, sent_at?, model?, web_search? }`
+  - `inbound` → inserta mensaje (source='manual_paste') + genera borrador → devuelve ambos.
+  - `outbound` → solo inserta mensaje, sin borrador.
+  - Si el borrador falla tras insertar el mensaje → 200 con `draft: null, draft_error: ...`.
+- Campos inyectados al prompt: `full_name`, `headline`, `current_position`, `current_company`,
+  `location_name`, `summary` (≤1500 chars), `website`, `cs_group`, `cs_parrafo_mercado`
+  (de `raw_profile`), hilo completo de `messages` ordenado por `sent_at ASC`.
+- Web search: off por default en borradores. Flag disponible como override.
+- Verificado con lead real Miguel Mozos:
+  - Sonnet 4.6 ✅ — neutro latino correcto, calibrado a apertura del lead.
+  - Kimi K2.6 ⚠️ — vuelca razonamiento en content; NO apto para borradores (ver nota Kimi).
+- Fix dotenv: `APP_PASSWORD` con `$` o `#` en `.env.local` requiere escape `\$` (dotenv-expand
+  expande `$VAR`; single quotes no previenen esto). En Vercel, el valor se almacena sin parsing.
+
+**Proximo paso: Slice 5 (Cockpit UI — bandeja, borrador, marcar enviado).**
+**Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
 
@@ -316,9 +346,8 @@ logica: adaptarla.
    playground, logging en `ai_usage`. **COMPLETADO.**
 3. **Ingesta LH2:** parser campos LH2 → leads, captura payload real, verificacion con lead
    real. **COMPLETADO.** (El webhook fue reemplazado por ingesta manual en la reestructuracion.)
-4. **Auto-borrador + ingesta manual:** endpoint de ingesta manual (form en cockpit para pegar
-   reply del lead), upsert lead, insertar mensaje, generar borrador con Sonnet y guardarlo en
-   `drafts` (status = pending).
+4. **Auto-borrador + ingesta manual:** endpoint `POST /api/leads/[id]/messages`, servicio
+   `lib/ai/draft.ts`, prompt `prompts/respuesta-lead.md`. Verificado con lead real. **COMPLETADO.**
 5. **Cockpit:** bandeja (`leads_awaiting_reply`) con borrador + perfil + editar + copiar +
    marcar enviado; caja de pegado para turnos siguientes; follow-ups vencidos.
 6. **Pipeline batch:** subir CSV -> clasificar -> cachear market_data -> generar 3 mensajes
@@ -337,6 +366,13 @@ logica: adaptarla.
 - ~~Auth mecanismo~~ **RESUELTO (reestructuracion pre-Slice 4):** password + cookie HMAC.
 - ~~Despliegue local vs. Vercel~~ **RESUELTO:** Vercel. `pnpm dev` para desarrollo local.
 - ~~exFAT fix en Vercel~~ **RESUELTO:** guard de plataforma en `fix-exfat.cjs`; no-op en Linux.
-- **Contrasena inicial:** Dylan debe reemplazar `APP_PASSWORD=CHANGE_ME_...` en `.env.local`
-  y en Vercel con una contrasena fuerte (min 16 caracteres, alfanumerica + simbolos).
-- Diseno de la pantalla del cockpit para el flujo de ingesta manual (Slice 4).
+- ~~Contrasena inicial~~ **RESUELTO:** password fuerte seteado. Fix dotenv: `\$` para escapar
+  `$` en `.env.local` (dotenv-expand lo expande sin escape).
+- ~~Diseno de la pantalla del cockpit para Slice 4~~ **RESUELTO:** flujo via endpoint API
+  (`POST /api/leads/[id]/messages`); UI viene en Slice 5.
+- **Kimi K2.6 en borradores:** vuelca reasoning en `content` via OpenRouter. Causa que el
+  borrador sea el chain-of-thought completo, no el mensaje. No usar Kimi como override para
+  `task_type: "draft"`. Documentado en seccion 3.
+- **Prompts en Vercel:** `prompts/respuesta-lead.md` se lee en runtime con `fs.readFileSync`.
+  Si falla en produccion, agregar `outputFileTracingIncludes` en `next.config.ts` o migrar
+  el contenido a un modulo TypeScript.
