@@ -34,3 +34,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# logs de captura (payloads reales de LH2 — datos privados, no al repo)
+/logs/

@@ -233,7 +233,43 @@ logica: adaptarla.
 - Tests manuales verificados: Sonnet 4.6 OK, Kimi K2.6 OK, web search Claude OK ($0.01/busq), web search OpenRouter OK ($0.005/req)
 - Fix Turbopack/Windows: `serverExternalPackages` en `next.config.ts`
 
-**Proximo paso: Slice 3 (Ingesta webhook LH2).**
+**Slice 3 completado (2026-06-17).** Ingesta webhook LH2 lista:
+- `/api/lh-webhook` con secreto en `.env.local` (`LH_WEBHOOK_SECRET`), acepta `?secret=` o header `x-webhook-secret`
+- Parser `src/lib/lh/parser.ts`: extrae lead (mapeo campos LH2 → tabla) + 2 mensajes del hilo (outbound de Dylan + inbound del lead)
+- Upsert del lead por `lh_id`; no degrada etapas activas avanzadas; re-activa `perdido`/`descartado` a `respondio`
+- Inserta mensajes con idempotencia por `(lead_id, sent_at)`; trigger actualiza `last_*_at` del lead automaticamente
+- Errores explícitos: 401 (secreto invalido), 400 (payload sin `lh_id` o sin `replied_message_1_text`), 500 (DB)
+- Captura dev: graba payload crudo a `logs/lh-webhook-capture.json` (gitignored)
+- Verificado con payload real: Miguel Mozos ingresado, 2 mensajes en DB, aparece en `leads_awaiting_reply`
+- LH2 → `http://localhost:4010` confirmado funcionando (Axios/0.27.2, misma PC)
+
+**Shape real del payload de LH2 (`CheckForReplies`):**
+- ~270 campos por perfil; numerados (organization_1..10, education_1..3, etc.)
+- Campos clave: `lh_id` (id interno de LH), `replied_message_1_text` (inbound, el disparador),
+  `last_received_message_text` (outbound de Dylan = lo recibido por el lead), `cs_city`, `cs_country`
+  (custom fields de Dylan en LH2, llegan ya rellenados), `cs_parrafo_mercado` (contexto para prompts → raw_profile)
+- Terminologia LH2: `last_sent` = enviado por el lead (inbound); `last_received` = recibido por el lead (outbound de Dylan)
+- Todos los campos numericos vienen como string (`followers`, `badges_premium`); convertir al parsear
+- Metadatos de campana: `campaign_name`, `campaign_id`, `action_type` ("CheckForReplies"), `my_full_name`
+
+**Mapeo LH2 → tabla `leads`:**
+| Campo LH2 | Columna leads | Nota |
+|---|---|---|
+| `lh_id` | `lh_id` | Clave de upsert |
+| `full_name` | `full_name` | Display name limpio |
+| `first_name`/`last_name` | idem | |
+| `headline` | `headline` | |
+| `summary` | `summary` | |
+| `current_company` | `current_company` | |
+| `current_company_position` | `current_position` | Nombre difiere |
+| `location_name` | `location_name` | |
+| `followers` (string) | `followers` | parseInt() |
+| `website_1` | `website` | |
+| `badges_premium` ("true"/"false") | `has_premium` | === "true" |
+| `cs_city` / `cs_country` | idem | Ya clasificados en LH2 |
+| body completo | `raw_profile` | jsonb (incluye email, avatar, campaign_name, cs_parrafo_mercado, etc.) |
+
+**Proximo paso: Slice 4 (Auto-borrador al ingerir inbound).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git (push pendiente de aprobacion de Dylan)
 
 ---
@@ -246,8 +282,9 @@ logica: adaptarla.
 2. **Capa de IA:** ~~modulo router (Agent SDK; Haiku clasifica / Sonnet genera), system
    prompts con voz neutro latino + reglas ITMANO, logging en `ai_usage`.~~ **COMPLETADO.**
    Multi-proveedor (Anthropic + OpenRouter), 5 modelos, web search, caching, playground.
-3. **Ingesta webhook:** `/api/lh-webhook` con secreto; capturar el payload real de LH2
-   primero; upsert lead + anexar mensaje.
+3. **Ingesta webhook:** ~~`/api/lh-webhook` con secreto; capturar el payload real de LH2
+   primero; upsert lead + anexar mensaje.~~ **COMPLETADO.** Parser, upsert, idempotencia,
+   errores 401/400/500, verificado con payload real de LH2.
 4. **Auto-borrador:** al ingerir un inbound, generar y guardar el borrador.
 5. **Cockpit:** bandeja (`leads_awaiting_reply`) con borrador + perfil + editar + copiar +
    marcar enviado; caja de pegado para turnos siguientes; follow-ups vencidos.
@@ -261,8 +298,11 @@ logica: adaptarla.
 - ~~Autenticacion del Agent SDK con la suscripcion y mecanica del credito mensual~~ **RESUELTO
   (Slice 2):** se usa API key (`ANTHROPIC_API_KEY`) directamente via `@anthropic-ai/sdk`. El
   "Agent SDK" de la suscripcion no se usa; la autenticacion es por API key prepago.
-- Que LH2 pueda hacer POST a `http://localhost:<PORT>` desde la misma PC (probar en Slice 3).
-- Forma exacta del payload del webhook de LH2 (capturar con "Run once" antes de escribir el parser).
+- ~~Que LH2 pueda hacer POST a `http://localhost:<PORT>` desde la misma PC~~ **RESUELTO (Slice 3):**
+  LH2 usa Axios/0.27.2 y apunta a `http://localhost:4010/api/lh-webhook?secret=...`. Funciona sin
+  configuracion adicional (misma PC). Secreto en `LH_WEBHOOK_SECRET` de `.env.local`.
+- ~~Forma exacta del payload del webhook de LH2~~ **RESUELTO (Slice 3):** documentado en seccion 10.
+  Captura dev en `logs/lh-webhook-capture.json` (gitignored).
 - ~~Flujo de migraciones de Supabase preferido (CLI vs panel)~~ **RESUELTO:** se usa el MCP
   de Supabase (`apply_migration`), scopeado al proyecto `jxqnfamcuuwbmvpfjzqm`. El MCP
   tambien se usa para inspeccionar el estado de la base antes de cualquier cambio
