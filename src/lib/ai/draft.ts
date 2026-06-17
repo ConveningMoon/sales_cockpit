@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "@/types/database";
+import type { Database, DraftInsert } from "@/types/database";
 import { callAI } from "./router";
 import { ITMANO_BASE_SYSTEM_PROMPT } from "./voice";
 
@@ -110,18 +110,18 @@ export async function generateDraft(
   const body = aiResult.content.trim();
 
   // 5. Guardar borrador en DB (status='pending', trigger='manual')
+  const newDraft: DraftInsert = {
+    lead_id: leadId,
+    in_reply_to_msg_id: inReplyToMsgId,
+    body,
+    model: aiResult.model,
+    trigger: "manual",
+    status: "pending",
+    sent_at: null,
+  };
   const { data: draft, error: draftErr } = await supabase
     .from("drafts")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .insert({
-      lead_id: leadId,
-      in_reply_to_msg_id: inReplyToMsgId,
-      body,
-      model: aiResult.model,
-      trigger: "manual",
-      status: "pending",
-      sent_at: null,
-    } as any)
+    .insert(newDraft)
     .select("id")
     .single();
 

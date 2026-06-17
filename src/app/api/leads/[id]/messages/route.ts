@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { generateDraft } from "@/lib/ai/draft";
+import type { MessageInsert } from "@/types/database";
 
 // En Next.js 15, los params de rutas dinámicas son una Promise.
 type RouteContext = { params: Promise<{ id: string }> };
@@ -67,17 +68,17 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
   // 4. Insertar mensaje
   // source: 'manual_paste' para ambas direcciones en este endpoint (ingesta manual del cockpit)
+  const newMessage: MessageInsert = {
+    lead_id: leadId,
+    direction,
+    body: text.trim(),
+    channel: "linkedin",
+    source: "manual_paste",
+    sent_at: sentAt,
+  };
   const { data: msg, error: msgErr } = await supabase
     .from("messages")
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .insert({
-      lead_id: leadId,
-      direction: direction as "inbound" | "outbound",
-      body: text.trim(),
-      channel: "linkedin",
-      source: "manual_paste",
-      sent_at: sentAt,
-    } as any)
+    .insert(newMessage)
     .select("id")
     .single();
 
