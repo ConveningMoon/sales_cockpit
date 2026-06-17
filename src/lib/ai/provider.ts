@@ -21,8 +21,10 @@ export class AnthropicProvider implements AiProvider {
   }
 
   async complete(params: ProviderCallParams): Promise<ProviderResult> {
+    // web_search_20260209 es un tool nativo de Anthropic sin input_schema — el cast doble
+    // es necesario porque Anthropic.Tool lo requiere pero el tool nativo no lo tiene.
     const tools: Anthropic.MessageCreateParams["tools"] = params.webSearch
-      ? [{ type: "web_search_20260209", name: "web_search" } as Anthropic.Tool]
+      ? [{ type: "web_search_20260209", name: "web_search" } as unknown as Anthropic.Tool]
       : undefined;
 
     const response = await this.client.messages.create({
@@ -97,9 +99,10 @@ export class OpenRouterProvider implements AiProvider {
       body.plugins = [{ id: "web" }];
     }
 
-    const response = await this.client.chat.completions.create(
-      body as Parameters<OpenAI["chat"]["completions"]["create"]>[0]
-    );
+    // El SDK de OpenAI devuelve ChatCompletion | Stream según los params.
+    // Nunca usamos stream aquí — el cast a OpenAI.ChatCompletion es seguro en runtime.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const response = (await this.client.chat.completions.create(body as any)) as OpenAI.ChatCompletion;
 
     const choice = response.choices[0];
     const msg = choice?.message as {
