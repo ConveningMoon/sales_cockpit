@@ -52,10 +52,10 @@ LinkedIn (riesgo de baneo, sin beneficio).
 
 ## 2. Stack
 
-- Next.js (App Router) + React + TypeScript
+- Next.js 15 (App Router) + React + TypeScript
 - Tailwind v4 + shadcn/ui
 - Supabase (PostgreSQL) como base de datos
-- Claude Agent SDK para la inferencia (ver seccion 3)
+- `@anthropic-ai/sdk` v0.104.2 (Claude directo) + `openai` v6 apuntando a OpenRouter (multi-proveedor)
 - Resend (opcional, notificaciones)
 
 ---
@@ -69,23 +69,38 @@ despliegue 24/7 en la nube por ahora. Supabase (cloud) es la DB; la app local se
 ella normalmente. LH2 corre en la misma PC, asi que puede hacer POST a
 `http://localhost:<PORT>/api/lh-webhook`.
 
-**Inferencia: solo Claude Agent SDK (por ahora),** autenticado con la suscripcion Pro de
-Dylan para consumir el credito mensual de Agent SDK (~$20 en Pro). Como la app no es 24/7 y
-Dylan esta autenticado en su maquina, este camino encaja. Upgrade path futuro: API key
-(prepago) + deploy 24/7; gracias al router (abajo) es un cambio de configuracion.
+**Inferencia: dos proveedores (Slice 2 — IMPLEMENTADO).**
+- **Anthropic directo** via `@anthropic-ai/sdk` + `ANTHROPIC_API_KEY`. Modelo default para
+  generacion: `claude-sonnet-4-6`. Modelo default para clasificacion: `claude-haiku-4-5-20251001`.
+- **OpenRouter** via cliente `openai` apuntando a `https://openrouter.ai/api/v1` + `OPENROUTER_API_KEY`.
+  Accede a Kimi K2.6 (`moonshotai/kimi-k2.6`), DeepSeek V4 Flash, Gemini 2.5 Flash Lite, y otros.
 
-**Router de modelos (abstraccion obligatoria).** Toda llamada de IA pasa por un modulo
-router (`lib/ai/`) que recibe un `task_type` y elige proveedor + modelo. Por ahora:
-proveedor unico = Agent SDK (Claude). Ruteo por tarea:
-- Clasificacion / extraccion -> modelo barato (Haiku).
-- Generacion de mensajes y borradores (donde vive la voz) -> Sonnet.
+**Router de modelos (`lib/ai/`).** Toda llamada de IA pasa por `callAI()` que elige proveedor
++ modelo segun `task_type` y `model` override. Ruteo por defecto:
+- `clasificacion` / `market_data` / `other` -> Haiku 4.5 (Anthropic, barato)
+- `outreach` / `draft` -> Sonnet 4.6 (Anthropic, calidad)
+Cada llamada se registra en `ai_usage` de forma no bloqueante.
 
-El router debe permitir cambiar a API key o a un proveedor de terceros en el futuro solo
-con configuracion. Cada llamada se registra en `ai_usage`.
+**Catalogo de modelos (`lib/ai/models.ts`).** 5 modelos activos con flags `supportsWebSearch`
+y `supportsCaching`. Anadir modelos aqui; el router los elige por id.
 
-**A verificar (mecanismo nuevo, 15-jun-2026):** la autenticacion del Agent SDK con la
-suscripcion y la mecanica del credito mensual son recientes. Verifica contra la
-documentacion vigente del Agent SDK en el Slice 2 antes de cablear. No asumas la API.
+**Busqueda web:**
+- Claude directo: tool `web_search_20260209`, $0.01/busqueda. Solo Sonnet 4.6+ (Haiku no).
+- OpenRouter: `plugins: [{id:"web"}]` via Exa, $0.005/req. Funciona con cualquier modelo.
+- El router rechaza con error claro si se pide `webSearch=true` en modelo sin soporte.
+
+**Caching de prompts:**
+- Anthropic: nativo via `cache_control: {type:"ephemeral"}` en el bloque system.
+- OpenRouter: automatico para Claude/Gemini/DeepSeek. Kimi K2.6 no soporta caching.
+
+**Nota sobre Kimi K2.6:** es un modelo de razonamiento. Usa el campo `reasoning` para su
+pensamiento interno y `content` para la respuesta final. Con `maxTokens` bajo (<512) puede
+quedarse en la fase de razonamiento sin llegar a `content`. El router usa 2048 por defecto;
+esto es suficiente para la mayoria de tareas. El provider extrae `content ?? reasoning` como
+fallback de seguridad.
+
+**Turbopack + Windows:** `@anthropic-ai/sdk` y `openai` usan imports `node:*` que generan
+nombres de archivo invalidos en Windows. Fix: `serverExternalPackages` en `next.config.ts`.
 
 ---
 
@@ -204,12 +219,21 @@ logica: adaptarla.
 **Slice 1 completado (2026-06-16).** Fundaciones listas:
 - Next.js 15 (App Router + TS + Tailwind v4) en puerto 4010
 - Clientes Supabase (browser + server) y tipos TypeScript derivados del esquema
-- Router de IA (stub puro — implementacion real en Slice 2)
 - Migracion 001 aplicada: 8 tablas + 3 vistas en Supabase cloud
 - Healthcheck `/api/health` retorna `{"ok": true}` con supabase + ai_router OK
 - Limitacion conocida: `pnpm build` falla en exFAT por `@vercel/nft`; `pnpm dev` funciona correctamente
 
-**Proximo paso: Slice 2 (Capa de IA).**
+**Slice 2 completado (2026-06-17).** Capa de IA lista:
+- Router multi-proveedor: Anthropic directo + OpenRouter (`lib/ai/router.ts`)
+- Catalogo de 5 modelos con precios, caching y web search (`lib/ai/models.ts`)
+- Dos providers implementados: `AnthropicProvider` y `OpenRouterProvider` (`lib/ai/provider.ts`)
+- System prompt base ITMANO en espanol neutro latino (`lib/ai/voice.ts`)
+- Logging de todas las llamadas en `ai_usage`; vista `ai_spend_monthly` verificada
+- Playground de pruebas en `/dev/playground` (solo modo desarrollo)
+- Tests manuales verificados: Sonnet 4.6 OK, Kimi K2.6 OK, web search Claude OK ($0.01/busq), web search OpenRouter OK ($0.005/req)
+- Fix Turbopack/Windows: `serverExternalPackages` en `next.config.ts`
+
+**Proximo paso: Slice 3 (Ingesta webhook LH2).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git (push pendiente de aprobacion de Dylan)
 
 ---
@@ -219,8 +243,9 @@ logica: adaptarla.
 1. **Fundaciones:** scaffold Next.js (App Router + TS + Tailwind v4 + shadcn/ui), conectar
    Supabase + aplicar migracion 001, variables de entorno, auth/proteccion local, cablear y
    verificar el Agent SDK, healthcheck.
-2. **Capa de IA:** modulo router (Agent SDK; Haiku clasifica / Sonnet genera), system
-   prompts con voz neutro latino + reglas ITMANO, logging en `ai_usage`.
+2. **Capa de IA:** ~~modulo router (Agent SDK; Haiku clasifica / Sonnet genera), system
+   prompts con voz neutro latino + reglas ITMANO, logging en `ai_usage`.~~ **COMPLETADO.**
+   Multi-proveedor (Anthropic + OpenRouter), 5 modelos, web search, caching, playground.
 3. **Ingesta webhook:** `/api/lh-webhook` con secreto; capturar el payload real de LH2
    primero; upsert lead + anexar mensaje.
 4. **Auto-borrador:** al ingerir un inbound, generar y guardar el borrador.
@@ -233,10 +258,11 @@ logica: adaptarla.
 
 ## 12. Por verificar / preguntas abiertas
 
-- Autenticacion del Agent SDK con la suscripcion y mecanica del credito mensual (mecanismo
-  nuevo del 15-jun-2026): verificar contra docs vigentes antes del Slice 2.
+- ~~Autenticacion del Agent SDK con la suscripcion y mecanica del credito mensual~~ **RESUELTO
+  (Slice 2):** se usa API key (`ANTHROPIC_API_KEY`) directamente via `@anthropic-ai/sdk`. El
+  "Agent SDK" de la suscripcion no se usa; la autenticacion es por API key prepago.
 - Que LH2 pueda hacer POST a `http://localhost:<PORT>` desde la misma PC (probar en Slice 3).
-- Forma exacta del payload del webhook de LH2 (capturar con "Run once").
+- Forma exacta del payload del webhook de LH2 (capturar con "Run once" antes de escribir el parser).
 - ~~Flujo de migraciones de Supabase preferido (CLI vs panel)~~ **RESUELTO:** se usa el MCP
   de Supabase (`apply_migration`), scopeado al proyecto `jxqnfamcuuwbmvpfjzqm`. El MCP
   tambien se usa para inspeccionar el estado de la base antes de cualquier cambio

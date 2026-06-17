@@ -1,49 +1,110 @@
-import type { AICallOptions, AICallResult, AIRouterConfig, AiTaskType } from "./types";
+import { createServerClient } from "@/lib/supabase/server";
+import type { AICallOptions, AICallResult, AIRouterConfig } from "./types";
+import type { AiTaskType } from "@/types/database";
+import { getModel, DEFAULT_MODELS } from "./models";
+import { AnthropicProvider, OpenRouterProvider } from "./provider";
 
-// Ruteo de modelos por tipo de tarea (ver CLAUDE.md § 3)
-// Clasificación y extracción → Haiku (costo bajo)
-// Generación de mensajes y borradores → Sonnet (calidad)
-const MODEL_ROUTING: Record<AiTaskType, AIRouterConfig> = {
-  clasificacion: {
-    model: "claude-haiku-4-5",
-    provider: "anthropic",
-    costPerInputToken: 1.0 / 1_000_000,
-    costPerOutputToken: 5.0 / 1_000_000,
-  },
-  market_data: {
-    model: "claude-haiku-4-5",
-    provider: "anthropic",
-    costPerInputToken: 1.0 / 1_000_000,
-    costPerOutputToken: 5.0 / 1_000_000,
-  },
-  outreach: {
-    model: "claude-sonnet-4-6",
-    provider: "anthropic",
-    costPerInputToken: 3.0 / 1_000_000,
-    costPerOutputToken: 15.0 / 1_000_000,
-  },
-  draft: {
-    model: "claude-sonnet-4-6",
-    provider: "anthropic",
-    costPerInputToken: 3.0 / 1_000_000,
-    costPerOutputToken: 15.0 / 1_000_000,
-  },
-  other: {
-    model: "claude-haiku-4-5",
-    provider: "anthropic",
-    costPerInputToken: 1.0 / 1_000_000,
-    costPerOutputToken: 5.0 / 1_000_000,
-  },
+const anthropicProvider = new AnthropicProvider();
+const openRouterProvider = new OpenRouterProvider();
+
+const WEB_SEARCH_COST_USD: Record<"anthropic" | "openrouter", number> = {
+  anthropic: 0.01,    // $10 / 1000 búsquedas (Anthropic nativo)
+  openrouter: 0.005,  // $0.005 / req (plugin Exa)
 };
 
+// Mantenido para compatibilidad con el healthcheck
 export function getRouterConfig(taskType: AiTaskType): AIRouterConfig {
-  return MODEL_ROUTING[taskType];
+  const modelId = DEFAULT_MODELS[taskType];
+  const config = getModel(modelId);
+  return {
+    model: config.id,
+    provider: config.provider,
+    costPerInputToken: config.costPerInputToken,
+    costPerOutputToken: config.costPerOutputToken,
+  };
 }
 
-// Stub: la implementación real se cablea en el Slice 2 una vez confirmada la auth del SDK.
 export async function callAI(options: AICallOptions): Promise<AICallResult> {
-  throw new Error(
-    `[AI Router] Stub activo para tarea "${options.taskType}". ` +
-      "La implementación real se integra en el Slice 2 tras confirmar la autenticación del SDK."
+  const modelId = options.model ?? DEFAULT_MODELS[options.taskType];
+  const modelConfig = getModel(modelId);
+
+  if (options.webSearch && !modelConfig.supportsWebSearch) {
+    throw new Error(
+      `[AI Router] El modelo "${modelConfig.label}" (${modelId}) no soporta búsqueda web. ` +
+        `Elige un modelo con supportsWebSearch=true o desactiva el flag.`
+    );
+  }
+
+  const provider =
+    modelConfig.provider === "anthropic" ? anthropicProvider : openRouterProvider;
+
+  const raw = await provider.complete({
+    systemPrompt: options.systemPrompt,
+    userMessage: options.userMessage,
+    model: modelId,
+    maxTokens: options.maxTokens ?? 2048,
+    webSearch: options.webSearch ?? false,
+  });
+
+  const tokenCostUsd =
+    raw.inputTokens * modelConfig.costPerInputToken +
+    raw.outputTokens * modelConfig.costPerOutputToken +
+    raw.cachedTokens * modelConfig.costPerCacheReadToken;
+
+  const webSearchCostUsd =
+    raw.webSearchRequests > 0
+      ? raw.webSearchRequests * WEB_SEARCH_COST_USD[modelConfig.provider]
+      : 0;
+
+  const costUsd = tokenCostUsd + webSearchCostUsd;
+
+  // Registrar en ai_usage de forma no bloqueante
+  logAiUsage({
+    taskType: options.taskType,
+    model: modelId,
+    provider: modelConfig.provider,
+    leadId: options.leadId,
+    inputTokens: raw.inputTokens,
+    outputTokens: raw.outputTokens,
+    cachedTokens: raw.cachedTokens,
+    costUsd,
+  }).catch((err) =>
+    console.error("[AI Router] Error al registrar ai_usage:", err)
   );
+
+  return {
+    content: raw.content,
+    inputTokens: raw.inputTokens,
+    outputTokens: raw.outputTokens,
+    cachedTokens: raw.cachedTokens,
+    webSearchRequests: raw.webSearchRequests,
+    webSearchCostUsd,
+    model: modelId,
+    provider: modelConfig.provider,
+    costUsd,
+  };
+}
+
+async function logAiUsage(params: {
+  taskType: AiTaskType;
+  model: string;
+  provider: string;
+  leadId?: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  costUsd: number;
+}) {
+  const supabase = createServerClient();
+  const { error } = await supabase.from("ai_usage").insert({
+    task_type: params.taskType,
+    model: params.model,
+    provider: params.provider,
+    lead_id: params.leadId ?? null,
+    input_tokens: params.inputTokens,
+    output_tokens: params.outputTokens,
+    cached_tokens: params.cachedTokens,
+    cost_usd: params.costUsd,
+  });
+  if (error) throw error;
 }
