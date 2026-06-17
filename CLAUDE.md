@@ -373,6 +373,8 @@ logica: adaptarla.
 - **Kimi K2.6 en borradores:** vuelca reasoning en `content` via OpenRouter. Causa que el
   borrador sea el chain-of-thought completo, no el mensaje. No usar Kimi como override para
   `task_type: "draft"`. Documentado en seccion 3.
-- **Prompts en Vercel:** `prompts/respuesta-lead.md` se lee en runtime con `fs.readFileSync`.
-  Si falla en produccion, agregar `outputFileTracingIncludes` en `next.config.ts` o migrar
-  el contenido a un modulo TypeScript.
+- ~~Prompts en Vercel~~ **RESUELTO:** `outputFileTracingIncludes: { "/api/**": ["./prompts/**"] }`
+  en `next.config.ts` (nivel raiz, tipado en `NextConfig`). Incluye `./prompts/**` en el bundle
+  serverless. Flujo verificado: editar `.md` + push + redeploy = prompt actualizado en produccion.
+  Cache en memoria (`_draftSystemPrompt`) se limpia en cada cold-start (Vercel destruye instancias
+  al redeploy). El placeholder `[ENLACE_DEL_RECURSO]` pasa sin transformacion al borrador.
