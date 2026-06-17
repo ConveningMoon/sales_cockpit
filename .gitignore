@@ -37,3 +37,6 @@ next-env.d.ts
 
 # logs de captura (payloads reales de LH2 — datos privados, no al repo)
 /logs/
+
+# MCP config local (contiene tokens — nunca al repo)
+.mcp.json
