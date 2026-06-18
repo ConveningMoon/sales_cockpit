@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { NewLeadForm } from "./_components/NewLeadForm";
+import { NewLeadTabs } from "./_components/NewLeadTabs";
 
 export default function NuevoLeadPage() {
   return (
@@ -18,8 +18,8 @@ export default function NuevoLeadPage() {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="text-xl font-semibold mb-6">Alta manual de lead</h1>
-        <NewLeadForm />
+        <h1 className="text-xl font-semibold mb-6">Agregar lead</h1>
+        <NewLeadTabs />
       </main>
     </div>
   );
