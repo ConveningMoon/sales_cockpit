@@ -16,9 +16,12 @@ export function computeLeadStatus(existing: LeadStatus | null): LeadStatus {
   return "respondio";
 }
 
+// newLeadStatus: status a asignar cuando el lead NO existe aún.
+// Usar "nuevo" para importación CSV (prospección); el default "respondio" es para inbound via cockpit.
 export async function upsertLead(
   supabase: SupabaseClient<Database>,
-  leadData: Lh2LeadData
+  leadData: Lh2LeadData,
+  newLeadStatus: LeadStatus = "respondio"
 ): Promise<{ id: string; lead_status: LeadStatus; full_name: string | null }> {
   const { data: existing } = await supabase
     .from("leads")
@@ -26,9 +29,9 @@ export async function upsertLead(
     .eq("lh_id", leadData.lh_id!)
     .maybeSingle();
 
-  const newStatus = computeLeadStatus(
-    existing ? (existing.lead_status as LeadStatus) : null
-  );
+  const newStatus = existing
+    ? computeLeadStatus(existing.lead_status as LeadStatus)
+    : newLeadStatus;
 
   // Supabase upsert solo incluye los campos proporcionados en el UPDATE SET;
   // los campos ausentes (cs_group, score, etc.) no se sobreescriben en leads existentes.

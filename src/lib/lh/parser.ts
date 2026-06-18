@@ -33,13 +33,15 @@ export interface ParsedLh2Webhook {
   messages: Lh2MessageData[];
 }
 
-export function parseLh2Payload(body: Record<string, unknown>): ParsedLh2Webhook {
+// Extrae solo los datos de perfil del lead desde un row de LH2 (webhook o CSV).
+// No requiere los campos de mensajes — apto para importación de CSV de prospección.
+export function parseLh2LeadRow(body: Record<string, unknown>): Lh2LeadData {
   const lh_id = strOrNull(body.lh_id);
   if (!lh_id) throw new Error("Campo lh_id ausente o vacío — no se puede identificar el lead.");
 
   const rawFollowers = parseInt(String(body.followers ?? ""), 10);
 
-  const lead: Lh2LeadData = {
+  return {
     lh_id,
     profile_url: strOrNull(body.profile_url),
     full_name: strOrNull(body.full_name),
@@ -60,6 +62,12 @@ export function parseLh2Payload(body: Record<string, unknown>): ParsedLh2Webhook
     // Payload completo — incluye email, avatar, campaign_name, cs_parrafo_mercado, etc.
     raw_profile: body,
   };
+}
+
+// Parsea el payload completo de un webhook LH2 (lead + mensajes).
+// Para importación de CSV usar parseLh2LeadRow directamente.
+export function parseLh2Payload(body: Record<string, unknown>): ParsedLh2Webhook {
+  const lead = parseLh2LeadRow(body);
 
   const messages: Lh2MessageData[] = [];
 
