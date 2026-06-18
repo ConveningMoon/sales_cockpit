@@ -388,6 +388,30 @@ logica: adaptarla.
 - `papaparse` + `@types/papaparse` agregados a las dependencias.
 - TypeScript limpio + lint clean; 3 commits separados.
 
+**Slice 5d completado (2026-06-19).** Importador de conversacion + alta manual de mensaje:
+- Migracion 002: `ai_usage.task_type` ampliado para incluir `"parse_conversation"`.
+  `AiTaskType` en `database.ts` y `DEFAULT_MODELS` en `models.ts` actualizados.
+- `src/lib/ai/conversation-parser.ts`:
+  - `parseConversation()`: llama Haiku (task_type=parse_conversation), recibe
+    `leadName` + `myName` para etiquetar direcciones, parsea JSON con strip de fences.
+  - `assignTimestamps()`: el orden del array es la fuente de verdad; candidato=timestamp
+    parseado si confiable, si no prev+1min; sent_at=max(candidate, prev+1s) — monotonia
+    estricta sin anclar a now() independientemente.
+  - `tryParseTimestamp()`: maneja "Apr 20", "Wednesday", "Yesterday", hora sola, fecha completa.
+  - `normalizeBody()`: trim+collapse whitespace+lowercase para dedup app-level.
+- `POST /api/leads/[id]/parse-conversation`: preview sin insertar nada en DB.
+- `POST /api/leads/[id]/import-conversation`: dedup en memoria, timestamps monotonos,
+  UN solo borrador al final (si ultimo del array es inbound), lead_status actualizado.
+- `POST /api/leads/[id]/messages`: flag `no_draft:true` para omitir borrador (mensajes historicos).
+- `ImportConversation` (client): paso 1 (textarea+my_name) → paso 2 (preview con toggle
+  de direccion por mensaje + eliminar fila) → confirmar → import + borrador.
+- `AddManualMessage` (client): form inline para mensaje suelto (direction, body, fecha opcional).
+  Sin borrador. Tras insertar, re-ordena el hilo local por sent_at.
+- `FichaClient`: integra ambos; tras import hace `router.refresh()` para el hilo historico.
+- `page.tsx`: selecciona `raw_profile` para pre-rellenar `my_full_name` en ImportConversation.
+- Campo "Tu nombre en LinkedIn": siempre visible, pre-rellenado desde
+  `raw_profile.my_full_name` si existe, editable, requerido — nunca falla si el campo no vino.
+
 **Proximo paso: Slice 5b (dropdown de modelo + toggle web search; follow-ups vencidos).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
@@ -408,6 +432,8 @@ logica: adaptarla.
      enviado), alta manual. Layout responsive 2-col. **COMPLETADO.**
    - **5c:** importar CSV de LH2, link de LinkedIn en ficha, profile_url en alta manual.
      **COMPLETADO.**
+   - **5d:** importador de conversacion (parse con Haiku + preview + confirmar),
+     alta manual de mensaje anterior, flag no_draft. **COMPLETADO.**
    - **5b (pendiente):** dropdown de modelo + toggle web search por generacion de borrador;
      vista follow-ups vencidos.
 6. **Pipeline batch:** subir CSV -> clasificar -> cachear market_data -> generar 3 mensajes
