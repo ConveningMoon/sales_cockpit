@@ -348,13 +348,22 @@ logica: adaptarla.
     con spinner (Skeleton) mientras genera.
   - `DraftPanel`: textarea editable + boton copiar (clipboard API + toast) + boton marcar enviado
     → `POST /api/leads/[id]/send` → toast de confirmacion + redirect a bandeja.
+  - **Bug fix (Slice 5a-fix):** el `if` de sincronizacion estaba en el cuerpo del render,
+    sobreescribiendo cada edicion del usuario. Movido a `useEffect([draft])` — resetea solo
+    cuando llega un draft nuevo del servidor.
+- **MessageThread (desde Slice 5a-fix):** Client Component con edicion inline por mensaje.
+  Boton "Editar" → textarea + Guardar/Cancelar. Llama `PATCH /api/leads/[id]/messages/[messageId]`.
+  Solo actualiza `body` — no regenera borrador. El callback `onMessageUpdated` actualiza el
+  estado en `FichaClient` sin reload de pagina.
 - **Alta manual (`/leads/new`):** formulario (nombre*, cargo, empresa, ciudad, pais, headline,
   summary) → `POST /api/leads` → redirige a `/leads/[id]`.
-- **Nuevos endpoints:**
+- **Endpoints:**
   - `POST /api/leads` — crea lead con `lh_id = manual_<uuid>`; tipo `LeadInsert` completo.
   - `POST /api/leads/[id]/send` — inserta outbound via `insertMessage()` compartido
     (mismo que `messages/route.ts`) + marca draft `sent`. `last_outbound_at` lo actualiza
     el trigger de DB; no se duplica logica.
+  - `PATCH /api/leads/[id]/messages/[messageId]` — actualiza solo `body`; protegido por auth;
+    no regenera borrador.
 - `src/lib/leads/messages.ts` — `insertMessage()`: funcion compartida para insertar mensajes;
   la usan `/messages/route.ts` (direction outbound) y `/send/route.ts`.
 - Responsive: mobile-first, layout 2 columnas en md+, apilado vertical en mobile.
