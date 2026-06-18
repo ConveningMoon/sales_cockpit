@@ -369,6 +369,25 @@ logica: adaptarla.
 - Responsive: mobile-first, layout 2 columnas en md+, apilado vertical en mobile.
 - TypeScript limpio + lint clean; deploy Vercel exitoso (verificado via GitHub statuses).
 
+**Slice 5c completado (2026-06-19).** Importacion CSV de LH2 + link de LinkedIn:
+- `parseLh2LeadRow()` extraida de `parseLh2Payload` — solo perfil, sin mensajes.
+  Permite parsear filas de CSV sin requerir `replied_message_1_text`.
+- `upsertLead()` acepta `newLeadStatus` opcional (default `"respondio"` para inbound;
+  pasar `"nuevo"` para importacion de prospectos sin contacto previo).
+- `profile_url` visible en ficha: `LeadProfile` muestra "Ver perfil ↗" (target=_blank).
+  `leads/[id]/page.tsx` ya seleccionaba la columna; ahora la pasa como prop.
+- Alta manual (`/leads/new`): campo "URL del perfil de LinkedIn" (opcional).
+  `POST /api/leads` guarda `profile_url` del body.
+- `POST /api/leads/import`:
+  - Body: `{ rows: Record<string, string>[] }`, maximo 500 filas.
+  - Por fila: `parseLh2LeadRow` → `upsertLead(supabase, leadData, "nuevo")`.
+  - Retorna `{ created, updated, leadIds, errors }` con detalle por fila.
+- `CsvUploader` (client): FileReader + PapaParse, muestra cuenta de filas, llama
+  `/api/leads/import`, redirect a ficha si 1 lead, a bandeja si varios.
+- `/leads/new`: tabs [Subir CSV de LH2 | Alta manual] via `NewLeadTabs` (client).
+- `papaparse` + `@types/papaparse` agregados a las dependencias.
+- TypeScript limpio + lint clean; 3 commits separados.
+
 **Proximo paso: Slice 5b (dropdown de modelo + toggle web search; follow-ups vencidos).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
@@ -387,6 +406,8 @@ logica: adaptarla.
 5. **Cockpit:**
    - **5a:** bandeja (todos + por responder), ficha (perfil + hilo + paste + borrador + marcar
      enviado), alta manual. Layout responsive 2-col. **COMPLETADO.**
+   - **5c:** importar CSV de LH2, link de LinkedIn en ficha, profile_url en alta manual.
+     **COMPLETADO.**
    - **5b (pendiente):** dropdown de modelo + toggle web search por generacion de borrador;
      vista follow-ups vencidos.
 6. **Pipeline batch:** subir CSV -> clasificar -> cachear market_data -> generar 3 mensajes
