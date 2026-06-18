@@ -24,6 +24,8 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     typeof b?.sent_at === "string" ? b.sent_at : new Date().toISOString();
   const modelOverride = typeof b?.model === "string" ? b.model : undefined;
   const webSearch = b?.web_search === true;
+  // no_draft: omite generación de borrador incluso para inbound (para mensajes históricos)
+  const noDraft = b?.no_draft === true;
 
   // 2. Validar campos requeridos
   if (direction !== "inbound" && direction !== "outbound") {
@@ -93,8 +95,8 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
 
   const msgId = msg.id as string;
 
-  // 5. Outbound → solo registrar, sin borrador
-  if (direction === "outbound") {
+  // 5. Outbound o no_draft → solo registrar, sin borrador
+  if (direction === "outbound" || noDraft) {
     return NextResponse.json({
       message: { id: msgId, direction, sent_at: sentAt },
     });
