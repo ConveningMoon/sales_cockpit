@@ -19,6 +19,7 @@ export function NewLeadForm() {
     const form = e.currentTarget;
     const data = {
       full_name: (form.elements.namedItem("full_name") as HTMLInputElement).value.trim(),
+      profile_url: (form.elements.namedItem("profile_url") as HTMLInputElement).value.trim() || undefined,
       current_position: (form.elements.namedItem("current_position") as HTMLInputElement).value.trim() || undefined,
       current_company: (form.elements.namedItem("current_company") as HTMLInputElement).value.trim() || undefined,
       cs_city: (form.elements.namedItem("cs_city") as HTMLInputElement).value.trim() || undefined,
@@ -68,6 +69,18 @@ export function NewLeadForm() {
           name="full_name"
           placeholder="Ej: María García"
           required
+          disabled={loading}
+        />
+      </div>
+
+      {/* URL del perfil de LinkedIn */}
+      <div className="space-y-1.5">
+        <Label htmlFor="profile_url">URL del perfil de LinkedIn (opcional)</Label>
+        <Input
+          id="profile_url"
+          name="profile_url"
+          type="url"
+          placeholder="https://www.linkedin.com/in/nombre-apellido"
           disabled={loading}
         />
       </div>

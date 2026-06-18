@@ -32,7 +32,8 @@ export async function POST(req: NextRequest) {
     full_name: fullName,
     first_name: firstName,
     last_name: lastName,
-    profile_url: null,
+    profile_url:
+      typeof b.profile_url === "string" ? b.profile_url.trim() || null : null,
     headline:
       typeof b.headline === "string" ? b.headline.trim() || null : null,
     summary:

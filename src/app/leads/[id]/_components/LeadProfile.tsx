@@ -12,6 +12,7 @@ type Props = {
   csGroup: string | null;
   summary: string | null;
   website: string | null;
+  profileUrl: string | null;
   leadStatus: string;
 };
 
@@ -26,6 +27,7 @@ export function LeadProfile({
   csGroup,
   summary,
   website,
+  profileUrl,
   leadStatus,
 }: Props) {
   const location = locationName ?? [csCity, csCountry].filter(Boolean).join(", ");
@@ -72,6 +74,23 @@ export function LeadProfile({
               Ubicación
             </dt>
             <dd className="mt-0.5">{location}</dd>
+          </div>
+        )}
+        {profileUrl && (
+          <div>
+            <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              LinkedIn
+            </dt>
+            <dd className="mt-0.5">
+              <a
+                href={profileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline break-all"
+              >
+                Ver perfil ↗
+              </a>
+            </dd>
           </div>
         )}
         {website && (
