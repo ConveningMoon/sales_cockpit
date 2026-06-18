@@ -16,7 +16,7 @@ export default async function FichaPage({ params }: PageProps) {
   const { data: lead } = await supabase
     .from("leads")
     .select(
-      "id, full_name, headline, current_position, current_company, location_name, cs_city, cs_country, cs_group, summary, website, profile_url, lead_status"
+      "id, full_name, headline, current_position, current_company, location_name, cs_city, cs_country, cs_group, summary, website, profile_url, lead_status, raw_profile"
     )
     .eq("id", leadId)
     .maybeSingle();
@@ -98,6 +98,11 @@ export default async function FichaPage({ params }: PageProps) {
           <div>
             <FichaClient
               leadId={leadId}
+              leadFullName={lead.full_name ?? "Lead"}
+              myName={
+                (lead.raw_profile as Record<string, unknown> | null)
+                  ?.my_full_name as string ?? ""
+              }
               initialMessages={initialMessages}
               initialDraft={initialDraft}
             />
