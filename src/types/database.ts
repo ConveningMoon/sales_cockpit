@@ -20,7 +20,7 @@ export type DraftStatus = "pending" | "edited" | "sent" | "discarded";
 export type DraftTrigger = "webhook" | "manual";
 export type OutreachKind = "cold" | "fu1" | "fu2";
 export type FollowupStage = "fu1" | "fu2" | "custom";
-export type AiTaskType = "clasificacion" | "market_data" | "outreach" | "draft" | "other";
+export type AiTaskType = "clasificacion" | "market_data" | "outreach" | "draft" | "other" | "parse_conversation";
 
 export interface Lead {
   id: string;

@@ -70,6 +70,7 @@ export const DEFAULT_MODELS: Record<AiTaskType, string> = {
   outreach: "claude-sonnet-4-6",
   draft: "claude-sonnet-4-6",
   other: "claude-haiku-4-5-20251001",
+  parse_conversation: "claude-haiku-4-5-20251001",
 };
 
 export const MODEL_LIST: ModelConfig[] = Object.values(MODELS);
