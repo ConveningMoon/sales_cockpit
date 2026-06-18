@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -17,18 +17,18 @@ type Props = {
   leadId: string;
   draft: Draft | null;
   loading: boolean;
-  onDraftChange?: (body: string) => void;
 };
 
-export function DraftPanel({ leadId, draft, loading, onDraftChange }: Props) {
+export function DraftPanel({ leadId, draft, loading }: Props) {
   const router = useRouter();
+  // body es el texto editable; se inicializa con el draft y se resetea
+  // solo cuando llega un draft con distinto id (nuevo borrador generado).
   const [body, setBody] = useState(draft?.body ?? "");
   const [sending, setSending] = useState(false);
 
-  // Sincronizar cuando llega un nuevo draft desde el servidor
-  if (draft && body !== draft.body && !sending) {
-    setBody(draft.body);
-  }
+  useEffect(() => {
+    if (draft) setBody(draft.body);
+  }, [draft]); // se ejecuta cuando llega un nuevo draft del servidor; el usuario puede editar sin reset
 
   async function handleCopy() {
     if (!body.trim()) return;
@@ -89,12 +89,9 @@ export function DraftPanel({ leadId, draft, loading, onDraftChange }: Props) {
 
       <Textarea
         value={body}
-        onChange={(e) => {
-          setBody(e.target.value);
-          onDraftChange?.(e.target.value);
-        }}
+        onChange={(e) => setBody(e.target.value)}
         rows={8}
-        className="resize-y text-sm font-mono leading-relaxed"
+        className="resize-y text-sm leading-relaxed"
         disabled={sending}
       />
 

@@ -31,11 +31,11 @@ export function FichaClient({ leadId, initialMessages, initialDraft }: Props) {
   const [draft, setDraft] = useState<Draft>(initialDraft);
   const [loading, setLoading] = useState(false);
 
-  // Actualizar si llegan nuevos datos del servidor (navegación)
+  // Sincronizar si cambia el lead (navegación entre fichas)
   useEffect(() => {
     setMessages(initialMessages);
     setDraft(initialDraft);
-  }, [leadId, initialMessages, initialDraft]);
+  }, [leadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handlePaste(text: string) {
     setLoading(true);
@@ -46,7 +46,7 @@ export function FichaClient({ leadId, initialMessages, initialDraft }: Props) {
         body: JSON.stringify({ direction: "inbound", body: text }),
       });
 
-      const data = await res.json() as {
+      const data = (await res.json()) as {
         message?: { id: string; direction: string; sent_at: string };
         draft?: { id: string; body: string; model: string } | null;
         draft_error?: string;
@@ -74,7 +74,7 @@ export function FichaClient({ leadId, initialMessages, initialDraft }: Props) {
         setDraft(data.draft);
       } else if (data.draft_error) {
         toast.warning(
-          `Mensaje registrado pero el borrador falló: ${data.draft_error}`
+          `Mensaje registrado, pero el borrador falló: ${data.draft_error}`
         );
       }
     } catch {
@@ -84,13 +84,21 @@ export function FichaClient({ leadId, initialMessages, initialDraft }: Props) {
     }
   }
 
+  function handleMessageUpdated(id: string, body: string) {
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, body } : m)));
+  }
+
   return (
     <div className="space-y-6">
       <section>
         <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">
           Hilo de conversación
         </h3>
-        <MessageThread messages={messages} />
+        <MessageThread
+          leadId={leadId}
+          messages={messages}
+          onMessageUpdated={handleMessageUpdated}
+        />
       </section>
 
       <Separator />
@@ -103,11 +111,7 @@ export function FichaClient({ leadId, initialMessages, initialDraft }: Props) {
         <>
           <Separator />
           <section>
-            <DraftPanel
-              leadId={leadId}
-              draft={draft}
-              loading={loading}
-            />
+            <DraftPanel leadId={leadId} draft={draft} loading={loading} />
           </section>
         </>
       )}
