@@ -66,17 +66,24 @@ export function StatusSelector({ leadId, currentStatus }: Props) {
         {statusLabel(status)}
       </span>
 
-      {/* Select nativo con optgroup — no estilos sobre las <option> */}
+      {/* Select nativo con optgroup.
+          color-scheme:dark hace que el popup nativo de opciones use
+          fondo oscuro/texto claro en todos los navegadores. */}
       <select
         value={status}
         onChange={handleChange}
         disabled={isPending}
         className={[
-          "h-7 rounded-md border border-border/50 bg-background/60 px-2 text-xs text-muted-foreground",
+          "h-7 rounded-md border border-border/50 px-2 text-xs",
           "focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40",
           "hover:border-border transition-colors cursor-pointer",
           "disabled:opacity-50 disabled:cursor-not-allowed",
         ].join(" ")}
+        style={{
+          colorScheme: "dark",
+          backgroundColor: "hsl(var(--background))",
+          color: "hsl(var(--foreground))",
+        }}
         aria-label="Cambiar estado del lead"
       >
         <optgroup label="── Pipeline ──">
