@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { parseConversationText } from "@/lib/ai/conversation-parser";
 
 type RawMsg = { direction: "inbound" | "outbound"; body: string; timestamp_raw: string };
 
@@ -19,13 +20,13 @@ type Props = {
 };
 
 export type ImportedMessage = {
-  id?: string; // no viene del preview, viene del import result si queremos refrescar
+  id?: string;
   direction: "inbound" | "outbound";
   body: string;
   sent_at: string;
 };
 
-type Step = "idle" | "parsing" | "preview" | "importing";
+type Step = "idle" | "preview" | "importing";
 
 export function ImportConversation({
   leadId,
@@ -39,11 +40,17 @@ export function ImportConversation({
   const [myName, setMyName] = useState(myNameDefault);
   const [preview, setPreview] = useState<RawMsg[]>([]);
 
+  // Edición inline de cuerpo de mensaje en preview
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingBody, setEditingBody] = useState("");
+
   function reset() {
     setStep("idle");
     setRawText("");
     setMyName(myNameDefault);
     setPreview([]);
+    setEditingIdx(null);
+    setEditingBody("");
   }
 
   function handleToggle() {
@@ -51,7 +58,7 @@ export function ImportConversation({
     setOpen((v) => !v);
   }
 
-  async function handleParse() {
+  function handleParse() {
     if (!rawText.trim()) {
       toast.error("Pega el texto de la conversación antes de continuar.");
       return;
@@ -61,34 +68,16 @@ export function ImportConversation({
       return;
     }
 
-    setStep("parsing");
-    try {
-      const res = await fetch(`/api/leads/${leadId}/parse-conversation`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw_text: rawText, my_name: myName.trim() }),
-      });
+    // Parseo determinista en el cliente — sin round-trip al servidor
+    const parsed = parseConversationText(rawText, myName.trim(), leadFullName);
 
-      const data = (await res.json()) as { messages?: RawMsg[]; error?: string };
-
-      if (!res.ok || !data.messages) {
-        toast.error(data.error ?? "Error al parsear la conversación.");
-        setStep("idle");
-        return;
-      }
-
-      if (data.messages.length === 0) {
-        toast.warning("No se detectaron mensajes. Verifica el texto pegado.");
-        setStep("idle");
-        return;
-      }
-
-      setPreview(data.messages);
-      setStep("preview");
-    } catch {
-      toast.error("Error de red al parsear.");
-      setStep("idle");
+    if (parsed.length === 0) {
+      toast.warning("No se detectaron mensajes. Verifica el texto y los nombres.");
+      return;
     }
+
+    setPreview(parsed);
+    setStep("preview");
   }
 
   function toggleDirection(idx: number) {
@@ -102,12 +91,43 @@ export function ImportConversation({
   }
 
   function deleteRow(idx: number) {
+    if (editingIdx === idx) {
+      setEditingIdx(null);
+      setEditingBody("");
+    }
     setPreview((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  function startEdit(idx: number, body: string) {
+    setEditingIdx(idx);
+    setEditingBody(body);
+  }
+
+  function cancelEdit() {
+    setEditingIdx(null);
+    setEditingBody("");
+  }
+
+  function saveBodyEdit(idx: number) {
+    const trimmed = editingBody.trim();
+    if (!trimmed) {
+      toast.error("El cuerpo no puede quedar vacío.");
+      return;
+    }
+    setPreview((prev) =>
+      prev.map((m, i) => (i === idx ? { ...m, body: trimmed } : m))
+    );
+    setEditingIdx(null);
+    setEditingBody("");
   }
 
   async function handleImport() {
     if (preview.length === 0) {
       toast.error("No hay mensajes para importar.");
+      return;
+    }
+    if (editingIdx !== null) {
+      toast.error("Termina de editar el mensaje antes de importar.");
       return;
     }
 
@@ -134,7 +154,6 @@ export function ImportConversation({
       }
 
       const { inserted = 0, skipped = 0 } = data;
-
       const parts = [
         inserted > 0 && `${inserted} mensaje${inserted !== 1 ? "s" : ""} importado${inserted !== 1 ? "s" : ""}`,
         skipped > 0 && `${skipped} omitido${skipped !== 1 ? "s" : ""} (ya existían)`,
@@ -146,11 +165,7 @@ export function ImportConversation({
         toast.warning(`Borrador no generado: ${data.draft_error}`);
       }
 
-      // Notificar al padre para actualizar el estado sin reload completo
-      // Los mensajes no tienen sent_at preciso desde aquí (no los devuelve el import endpoint);
-      // el padre puede hacer un reload o recibir los datos mínimos para trigger un refetch.
       onImported({ newMessages: [], draft: data.draft ?? null });
-
       reset();
       setOpen(false);
     } catch {
@@ -177,7 +192,7 @@ export function ImportConversation({
       {open && (
         <div className="rounded-lg border border-border bg-card p-4 space-y-4">
           {/* Paso 1 — Pegar texto */}
-          {(step === "idle" || step === "parsing") && (
+          {step === "idle" && (
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="import-my-name">Tu nombre en LinkedIn</Label>
@@ -186,7 +201,6 @@ export function ImportConversation({
                   value={myName}
                   onChange={(e) => setMyName(e.target.value)}
                   placeholder="Ej: Dylan Vergara"
-                  disabled={step === "parsing"}
                 />
                 <p className="text-xs text-muted-foreground">
                   Tal como aparece en la conversación de LinkedIn. Se usa para identificar
@@ -197,7 +211,9 @@ export function ImportConversation({
               <div className="space-y-1.5">
                 <Label htmlFor="import-raw-text">
                   Conversación{" "}
-                  <span className="text-muted-foreground font-normal">(pega el texto copiado de LinkedIn)</span>
+                  <span className="text-muted-foreground font-normal">
+                    (pega el texto copiado de LinkedIn)
+                  </span>
                 </Label>
                 <Textarea
                   id="import-raw-text"
@@ -205,80 +221,127 @@ export function ImportConversation({
                   onChange={(e) => setRawText(e.target.value)}
                   rows={8}
                   placeholder={`${leadFullName}\n\nApr 20\n\nDylan Vergara sent the following messages at 10:22 AM\nHola [nombre], vi tu perfil y...`}
-                  disabled={step === "parsing"}
                   className="resize-y text-sm font-mono"
                 />
               </div>
 
               <Button
                 onClick={handleParse}
-                disabled={step === "parsing" || !rawText.trim() || !myName.trim()}
+                disabled={!rawText.trim() || !myName.trim()}
                 size="sm"
               >
-                {step === "parsing" ? "Parseando…" : "Parsear conversación"}
+                Parsear conversación
               </Button>
             </>
           )}
 
-          {/* Paso 2 — Preview y corrección */}
+          {/* Paso 2 — Preview, corrección e importación */}
           {(step === "preview" || step === "importing") && (
             <>
               <div>
                 <p className="text-sm font-medium mb-1">
-                  {preview.length} mensaje{preview.length !== 1 ? "s" : ""} detectado{preview.length !== 1 ? "s" : ""}
+                  {preview.length} mensaje{preview.length !== 1 ? "s" : ""} detectado
+                  {preview.length !== 1 ? "s" : ""}
                 </p>
                 <p className="text-xs text-muted-foreground mb-3">
-                  Revisa las direcciones. Haz clic en <strong>inbound</strong> /
-                  <strong> outbound</strong> para corregir. Usa ✕ para eliminar filas de ruido.
+                  Revisa las direcciones y el cuerpo. Clic en el chip para cambiar
+                  dirección. Usa ✎ para editar el texto (útil cuando LinkedIn duplica
+                  firmas). Usa ✕ para eliminar filas de ruido.
                 </p>
               </div>
 
-              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                {preview.map((msg, idx) => (
-                  <div
-                    key={idx}
-                    className={`rounded-md px-3 py-2 text-sm border flex gap-2 items-start ${
-                      msg.direction === "outbound"
-                        ? "bg-primary/5 border-primary/20"
-                        : "bg-muted border-border"
-                    }`}
-                  >
-                    {/* Chip de dirección — click para toggle */}
-                    <button
-                      onClick={() => toggleDirection(idx)}
-                      disabled={step === "importing"}
-                      className={`shrink-0 text-xs font-medium px-1.5 py-0.5 rounded border cursor-pointer transition-colors ${
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                {preview.map((msg, idx) => {
+                  const isEditing = editingIdx === idx;
+                  return (
+                    <div
+                      key={idx}
+                      className={`rounded-md px-3 py-2 text-sm border ${
                         msg.direction === "outbound"
-                          ? "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20"
-                          : "bg-muted-foreground/10 border-muted-foreground/30 text-muted-foreground hover:bg-muted-foreground/20"
+                          ? "bg-primary/5 border-primary/20"
+                          : "bg-muted border-border"
                       }`}
-                      title="Clic para cambiar dirección"
                     >
-                      {msg.direction === "outbound" ? "↑ outbound" : "↓ inbound"}
-                    </button>
+                      <div className="flex gap-2 items-start">
+                        {/* Chip de dirección */}
+                        <button
+                          onClick={() => toggleDirection(idx)}
+                          disabled={step === "importing" || isEditing}
+                          className={`shrink-0 text-xs font-medium px-1.5 py-0.5 rounded border cursor-pointer transition-colors ${
+                            msg.direction === "outbound"
+                              ? "bg-primary/10 border-primary/30 text-primary hover:bg-primary/20"
+                              : "bg-muted-foreground/10 border-muted-foreground/30 text-muted-foreground hover:bg-muted-foreground/20"
+                          } disabled:cursor-default`}
+                          title="Clic para cambiar dirección"
+                        >
+                          {msg.direction === "outbound" ? "↑ outbound" : "↓ inbound"}
+                        </button>
 
-                    {/* Cuerpo del mensaje */}
-                    <p className="flex-1 whitespace-pre-wrap leading-snug text-xs line-clamp-3">
-                      {msg.body}
-                    </p>
+                        {/* Cuerpo — display o editor */}
+                        {isEditing ? (
+                          <div className="flex-1 space-y-1.5">
+                            <Textarea
+                              value={editingBody}
+                              onChange={(e) => setEditingBody(e.target.value)}
+                              rows={4}
+                              className="text-xs resize-y"
+                              autoFocus
+                            />
+                            <div className="flex gap-1.5">
+                              <Button
+                                size="sm"
+                                className="h-6 text-xs px-2"
+                                onClick={() => saveBodyEdit(idx)}
+                              >
+                                Guardar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-6 text-xs px-2"
+                                onClick={cancelEdit}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="flex-1 whitespace-pre-wrap leading-snug text-xs line-clamp-3">
+                            {msg.body}
+                          </p>
+                        )}
 
-                    {/* Botón eliminar */}
-                    <button
-                      onClick={() => deleteRow(idx)}
-                      disabled={step === "importing"}
-                      className="shrink-0 text-muted-foreground hover:text-destructive transition-colors text-xs leading-none mt-0.5"
-                      title="Eliminar esta fila"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                        {/* Acciones — solo cuando no está editando */}
+                        {!isEditing && (
+                          <div className="shrink-0 flex gap-1.5 mt-0.5">
+                            <button
+                              onClick={() => startEdit(idx, msg.body)}
+                              disabled={step === "importing"}
+                              className="text-muted-foreground hover:text-foreground transition-colors text-xs leading-none"
+                              title="Editar cuerpo"
+                            >
+                              ✎
+                            </button>
+                            <button
+                              onClick={() => deleteRow(idx)}
+                              disabled={step === "importing"}
+                              className="text-muted-foreground hover:text-destructive transition-colors text-xs leading-none"
+                              title="Eliminar esta fila"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex gap-2 flex-wrap pt-1">
                 <Button
                   onClick={handleImport}
-                  disabled={step === "importing" || preview.length === 0}
+                  disabled={step === "importing" || preview.length === 0 || editingIdx !== null}
                   size="sm"
                 >
                   {step === "importing"

@@ -391,26 +391,47 @@ logica: adaptarla.
 **Slice 5d completado (2026-06-19).** Importador de conversacion + alta manual de mensaje:
 - Migracion 002: `ai_usage.task_type` ampliado para incluir `"parse_conversation"`.
   `AiTaskType` en `database.ts` y `DEFAULT_MODELS` en `models.ts` actualizados.
-- `src/lib/ai/conversation-parser.ts`:
-  - `parseConversation()`: llama Haiku (task_type=parse_conversation), recibe
-    `leadName` + `myName` para etiquetar direcciones, parsea JSON con strip de fences.
+- `src/lib/ai/conversation-parser.ts` (ver 5d-fix abajo para estado final):
   - `assignTimestamps()`: el orden del array es la fuente de verdad; candidato=timestamp
     parseado si confiable, si no prev+1min; sent_at=max(candidate, prev+1s) — monotonia
     estricta sin anclar a now() independientemente.
-  - `tryParseTimestamp()`: maneja "Apr 20", "Wednesday", "Yesterday", hora sola, fecha completa.
   - `normalizeBody()`: trim+collapse whitespace+lowercase para dedup app-level.
-- `POST /api/leads/[id]/parse-conversation`: preview sin insertar nada en DB.
 - `POST /api/leads/[id]/import-conversation`: dedup en memoria, timestamps monotonos,
   UN solo borrador al final (si ultimo del array es inbound), lead_status actualizado.
 - `POST /api/leads/[id]/messages`: flag `no_draft:true` para omitir borrador (mensajes historicos).
-- `ImportConversation` (client): paso 1 (textarea+my_name) → paso 2 (preview con toggle
-  de direccion por mensaje + eliminar fila) → confirmar → import + borrador.
 - `AddManualMessage` (client): form inline para mensaje suelto (direction, body, fecha opcional).
   Sin borrador. Tras insertar, re-ordena el hilo local por sent_at.
 - `FichaClient`: integra ambos; tras import hace `router.refresh()` para el hilo historico.
 - `page.tsx`: selecciona `raw_profile` para pre-rellenar `my_full_name` en ImportConversation.
 - Campo "Tu nombre en LinkedIn": siempre visible, pre-rellenado desde
   `raw_profile.my_full_name` si existe, editable, requerido — nunca falla si el campo no vino.
+
+**Slice 5d-fix completado (2026-06-19).** Parser determinista (sin IA) + preview editable:
+- **Razon del fix:** Haiku truncaba el JSON porque reproducia el texto completo de la
+  conversacion en la respuesta, agotando el presupuesto de tokens.
+- `src/lib/ai/conversation-parser.ts` reescrito como funcion pura sin llamadas a IA:
+  - `parseConversationText(text, myName, leadName)`: parser linea a linea, cliente-safe.
+    Orden de evaluacion: ruido → cabecera de fecha → ancla → cuerpo.
+  - **Ancla**: linea que matchea `<nombre>  <hora>` (2+ espacios), donde el nombre coincide
+    (normalizado: trim+lowercase+sin acentos) con `myName` (outbound) o `leadName` (inbound).
+    Si el nombre no coincide con ninguno, la linea se trata como cuerpo (evita anclas falsas).
+  - **Ruido ignorado**: `sent the following message(s) at`, `View X's profile...` (apóstrofo
+    curvo y recto), `Seen by X at`.
+  - **Cabeceras de fecha** (actualizan `currentDate`, no producen mensaje):
+    nombres de dia, `Today`/`Yesterday`, `Apr 22`/`May 5` etc.
+  - **timestamp_raw**: string combinado `"May 13 2:08 PM"`, `"Monday 6:24 PM"`, `"Today 8:43 AM"`.
+  - `assignTimestamps()` y `normalizeBody()` permanecen para uso server-side.
+  - `tryParseTimestamp()` actualizado: year dinamico (resta 1 anio si la fecha queda en el
+    futuro), maneja "Apr 22 1:40 PM", "Monday 6:24 PM", "Today 8:43 AM", "Yesterday 5 PM".
+- `POST /api/leads/[id]/parse-conversation` eliminado (ya no se usa; el parseo es cliente-side).
+- Migracion 002 (`parse_conversation` en ai_usage) permanece — no vale la pena revertirla.
+- `ImportConversation` (client): parseo instantaneo sin round-trip al servidor.
+  Paso 1 (textarea+my_name) → preview instantaneo → confirmar → import.
+  Preview: chip de direccion (toggle) + edicion inline del cuerpo (boton ✎ → textarea
+  Guardar/Cancelar) + eliminar fila (✕). Util para limpiar firmas duplicadas de LinkedIn.
+  Importar bloqueado si hay una edicion abierta sin guardar.
+- El cliente emite `timestamp_raw` (string); el servidor (`import-conversation`) lo resuelve
+  a `sent_at` con su propio `now()` — servidor como unica fuente de verdad para la DB.
 
 **Proximo paso: Slice 5b (dropdown de modelo + toggle web search; follow-ups vencidos).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
@@ -432,8 +453,8 @@ logica: adaptarla.
      enviado), alta manual. Layout responsive 2-col. **COMPLETADO.**
    - **5c:** importar CSV de LH2, link de LinkedIn en ficha, profile_url en alta manual.
      **COMPLETADO.**
-   - **5d:** importador de conversacion (parse con Haiku + preview + confirmar),
-     alta manual de mensaje anterior, flag no_draft. **COMPLETADO.**
+   - **5d:** importador de conversacion + alta manual de mensaje anterior + flag no_draft.
+     Parser determinista cliente-side (sin IA); preview editable. **COMPLETADO.**
    - **5b (pendiente):** dropdown de modelo + toggle web search por generacion de borrador;
      vista follow-ups vencidos.
 6. **Pipeline batch:** subir CSV -> clasificar -> cachear market_data -> generar 3 mensajes

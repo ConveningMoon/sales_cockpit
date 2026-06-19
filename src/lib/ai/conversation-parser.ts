@@ -1,110 +1,145 @@
-import { callAI } from "./router";
+// Parser determinista de conversaciones de LinkedIn.
+// Sin llamadas a IA — función pura segura para uso en cliente y servidor.
 
 export interface RawParsedMessage {
   direction: "inbound" | "outbound";
   body: string;
-  timestamp_raw: string;
+  timestamp_raw: string; // string combinado "May 13 2:08 PM", "Monday 6:24 PM", etc.
 }
 
 export interface TimestampedMessage extends RawParsedMessage {
-  sent_at: string; // ISO, estrictamente creciente
+  sent_at: string; // ISO, estrictamente creciente — calculado en el servidor
 }
 
 // ---------------------------------------------------------------------------
-// Parseo con Haiku
+// Parser determinista (cliente-side)
 // ---------------------------------------------------------------------------
 
-export async function parseConversation(params: {
-  rawText: string;
-  leadName: string;
-  myName: string;
-  leadId?: string;
-}): Promise<RawParsedMessage[]> {
-  const { rawText, leadName, myName, leadId } = params;
-
-  const systemPrompt =
-    "Eres un parser de conversaciones de LinkedIn. " +
-    "Devuelves exclusivamente JSON válido, sin markdown, sin explicaciones.";
-
-  const userMessage =
-    `Lead: ${leadName}\n` +
-    `Mi nombre en LinkedIn: ${myName}\n\n` +
-    `Texto de la conversación:\n${rawText}\n\n` +
-    `Devuelve un array JSON con exactamente este formato:\n` +
-    `[{"direction":"inbound"|"outbound","body":"...","timestamp_raw":"..."}]\n\n` +
-    `Reglas:\n` +
-    `- direction="outbound" → mensajes de ${myName}\n` +
-    `- direction="inbound"  → mensajes de ${leadName}\n` +
-    `- Ignora: "View X's profile", "sent the following messages at", ` +
-    `líneas que solo son un nombre, "You sent", "Seen", marcas de tiempo aisladas\n` +
-    `- body: texto limpio del mensaje (sin metadatos ni nombres de encabezado)\n` +
-    `- timestamp_raw: fecha/hora tal como aparece ("Apr 20", "Wednesday 3:04 PM"), ` +
-    `o "" si no hay fecha asociada a este mensaje específico\n` +
-    `- Orden: de más antiguo a más reciente (cronológico)\n` +
-    `- Solo incluye mensajes con body no vacío`;
-
-  const result = await callAI({
-    taskType: "parse_conversation",
-    systemPrompt,
-    userMessage,
-    leadId,
-    maxTokens: 2048,
-  });
-
-  return parseJsonOutput(result.content);
-}
-
-function parseJsonOutput(raw: string): RawParsedMessage[] {
-  let cleaned = raw.trim();
-
-  // Strip markdown fences (```json...``` o ```...```)
-  const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) cleaned = fenceMatch[1].trim();
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch {
-    throw new Error(
-      `[conversation-parser] JSON inválido del modelo: ${cleaned.slice(0, 300)}`
-    );
-  }
-
-  if (!Array.isArray(parsed)) {
-    throw new Error("[conversation-parser] La respuesta no es un array JSON.");
-  }
+// Extrae mensajes estructurados del texto pegado desde LinkedIn.
+// Orden de evaluación por línea: ruido → cabecera de fecha → ancla → cuerpo.
+export function parseConversationText(
+  text: string,
+  myName: string,
+  leadName: string
+): RawParsedMessage[] {
+  const normMy = normalizeName(myName);
+  const normLead = normalizeName(leadName);
 
   const messages: RawParsedMessage[] = [];
-  for (const item of parsed) {
-    if (typeof item !== "object" || item === null) continue;
-    const obj = item as Record<string, unknown>;
+  let currentDate = "";
+  let currentMsg: {
+    direction: "inbound" | "outbound";
+    lines: string[];
+    timestamp_raw: string;
+  } | null = null;
 
-    const dir = obj.direction;
-    if (dir !== "inbound" && dir !== "outbound") continue;
-
-    const body = typeof obj.body === "string" ? obj.body.trim() : "";
-    if (!body) continue;
-
-    const timestamp_raw =
-      typeof obj.timestamp_raw === "string" ? obj.timestamp_raw : "";
-
-    messages.push({ direction: dir, body, timestamp_raw });
+  function flush() {
+    if (!currentMsg) return;
+    const body = currentMsg.lines.join("\n").trim();
+    if (body) {
+      messages.push({
+        direction: currentMsg.direction,
+        body,
+        timestamp_raw: currentMsg.timestamp_raw,
+      });
+    }
+    currentMsg = null;
   }
 
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+
+    // 1. Ruido — evaluado primero para excluir líneas estructurales de LH2
+    if (/sent the following messages? at/i.test(trimmed)) continue;
+    if (/^view .+[‘’']s profile/i.test(trimmed)) continue; // curvo y recto
+    if (/^seen by .+ at/i.test(trimmed)) continue;
+
+    // 2. Cabecera de fecha (actualiza currentDate, finaliza mensaje anterior)
+    if (isDateHeader(trimmed)) {
+      flush();
+      currentDate = trimmed;
+      continue;
+    }
+
+    // 3. Ancla por mensaje: <nombre>  <hora> — solo si el nombre coincide
+    const anchor = tryParseAnchor(trimmed, normMy, normLead);
+    if (anchor) {
+      flush();
+      const timestamp_raw = currentDate
+        ? `${currentDate} ${anchor.time}`
+        : anchor.time;
+      currentMsg = { direction: anchor.direction, lines: [], timestamp_raw };
+      continue;
+    }
+
+    // 4. Cuerpo (línea pertenece al mensaje actual, preservando estructura original)
+    if (currentMsg) currentMsg.lines.push(line);
+  }
+
+  flush();
   return messages;
 }
 
+function isDateHeader(s: string): boolean {
+  if (!s) return false;
+  if (/^(today|yesterday)$/i.test(s)) return true;
+  if (/^(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/i.test(s))
+    return true;
+  // "Apr 22", "May 5", "January 15" — mes + día sin hora
+  if (/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+\d{1,2}$/i.test(s))
+    return true;
+  return false;
+}
+
+function tryParseAnchor(
+  line: string,
+  normMy: string,
+  normLead: string
+): { direction: "inbound" | "outbound"; time: string } | null {
+  // Patrón: <nombre con 2+ espacios> <hora tipo "1:40 PM">
+  const match = line.match(/^(.+?)\s{2,}(\d{1,2}:\d{2}\s*(?:AM|PM))\s*$/i);
+  if (!match) return null;
+
+  const anchorName = normalizeName(match[1]);
+  const time = match[2].trim();
+
+  if (anchorName === normMy) return { direction: "outbound", time };
+  if (anchorName === normLead) return { direction: "inbound", time };
+
+  // Nombre desconocido → tratar como cuerpo (previene anclas falsas en texto libre)
+  return null;
+}
+
+function normalizeName(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // elimina marcas de acento
+    .replace(/\s+/g, " ");
+}
+
 // ---------------------------------------------------------------------------
-// Asignación de timestamps
-//
-// El ORDEN del array es la fuente de verdad, no los timestamps.
-// Estrategia por mensaje:
-//   candidate = timestamp parseado si confiable, si no → prev + 1 min
-//   sent_at   = max(candidate, prev + 1s)   ← monotonía estricta garantizada
-// El gap sintético se ancla al mensaje anterior, nunca a now() de forma independiente,
-// para que no se intercale fuera de orden con fechas reales.
+// Resolución de timestamps (servidor)
+// El cliente emite timestamp_raw; el servidor resuelve a sent_at con su propio now().
 // ---------------------------------------------------------------------------
 
+const WEEKDAYS = [
+  "sunday",
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+];
+
+const ONE_DAY_MS = 86_400_000;
+const TEN_YEARS_MS = 10 * 365 * ONE_DAY_MS;
+
+// Asigna sent_at ISO estrictamente creciente.
+// El orden del array es la fuente de verdad — la precisión del timestamp es best-effort.
+// Clamp: sent_at = max(candidate, prev + 1s) garantiza monotonía sin anclar a now().
 export function assignTimestamps(
   messages: RawParsedMessage[],
   now = new Date()
@@ -113,84 +148,110 @@ export function assignTimestamps(
 
   const ONE_MIN_MS = 60_000;
   const ONE_SEC_MS = 1_000;
-
-  // Punto de partida: suficientemente en el pasado para que todos los mensajes
-  // queden antes de now() aunque no tengan timestamp propio.
   let prevMs = now.getTime() - messages.length * ONE_MIN_MS;
 
   return messages.map((msg) => {
     const parsed = tryParseTimestamp(msg.timestamp_raw, now);
     const candidateMs = parsed !== null ? parsed : prevMs + ONE_MIN_MS;
     const sentMs = Math.max(candidateMs, prevMs + ONE_SEC_MS);
-
     prevMs = sentMs;
     return { ...msg, sent_at: new Date(sentMs).toISOString() };
   });
 }
 
-// Intenta parsear formatos comunes de LinkedIn. Devuelve ms o null.
+// Parsea formatos de timestamp_raw producidos por el cliente.
+// Usa el year dinámico; si la fecha resuelta queda en el futuro resta un año.
+// Formatos soportados: "May 13 2:08 PM", "Monday 6:24 PM", "Today 8:43 AM",
+// "Yesterday 5:00 PM", "Apr 22", "Monday", "Today", "Yesterday", ISO completo.
 function tryParseTimestamp(raw: string, now: Date): number | null {
   const s = raw?.trim();
   if (!s) return null;
 
   const nowMs = now.getTime();
-  const ONE_DAY_MS = 86_400_000;
-  const TEN_YEARS_MS = 10 * 365 * ONE_DAY_MS;
-
-  // 1. Parseo directo (maneja "April 21, 2025", "Apr 20, 2024 3:04 PM", etc.)
-  const direct = Date.parse(s);
-  if (!isNaN(direct)) {
-    if (direct >= nowMs - TEN_YEARS_MS && direct <= nowMs + ONE_DAY_MS) {
-      return direct;
-    }
-  }
-
   const currentYear = now.getFullYear();
 
-  // 2. "Apr 20" / "April 20" sin año
-  const monthDay = s.match(
-    /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december)\s+(\d{1,2})(?:\b.*)?$/i
-  );
-  if (monthDay) {
-    const attempt = Date.parse(`${monthDay[1]} ${monthDay[2]}, ${currentYear}`);
-    if (!isNaN(attempt)) {
-      // Si la fecha cae en el futuro, usar el año anterior
-      return attempt > nowMs ? attempt - 365 * ONE_DAY_MS : attempt;
-    }
+  // 1. "Today 8:43 AM" / "Yesterday 5:00 PM" (relativo + hora)
+  const relTimeMatch = s.match(/^(today|yesterday)\s+(.+)$/i);
+  if (relTimeMatch) {
+    const base = /^today/i.test(s)
+      ? new Date(now)
+      : new Date(nowMs - ONE_DAY_MS);
+    const attempt = Date.parse(`${base.toDateString()} ${relTimeMatch[2]}`);
+    return !isNaN(attempt) ? attempt : base.getTime();
   }
 
-  // 3. Nombre del día de la semana ("Wednesday", "Wednesday 3:04 PM")
-  const weekdays = [
-    "sunday",
-    "monday",
-    "tuesday",
-    "wednesday",
-    "thursday",
-    "friday",
-    "saturday",
-  ];
-  const dayMatch = s.match(
-    /^(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i
+  // 2. "Today" / "Yesterday" (solo relativo, sin hora)
+  if (/^today$/i.test(s)) return nowMs;
+  if (/^yesterday$/i.test(s)) return nowMs - ONE_DAY_MS;
+
+  // 3. "Monday 6:24 PM" / "Tuesday 2:16 PM" (nombre de día + hora)
+  const dayTimeMatch = s.match(
+    /^(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\s+(.+)$/i
   );
-  if (dayMatch) {
-    const target = weekdays.indexOf(dayMatch[1].toLowerCase());
+  if (dayTimeMatch) {
+    const target = WEEKDAYS.indexOf(dayTimeMatch[1].toLowerCase());
     const d = new Date(now);
-    // Retroceder hasta el día de la semana buscado (máximo 6 días atrás)
+    while (d.getDay() !== target) d.setDate(d.getDate() - 1);
+    const attempt = Date.parse(`${d.toDateString()} ${dayTimeMatch[2]}`);
+    return !isNaN(attempt) ? attempt : d.getTime();
+  }
+
+  // 4. "Monday" / "Tuesday" (solo nombre de día)
+  const dayOnlyMatch = s.match(
+    /^(sunday|monday|tuesday|wednesday|thursday|friday|saturday)$/i
+  );
+  if (dayOnlyMatch) {
+    const target = WEEKDAYS.indexOf(dayOnlyMatch[1].toLowerCase());
+    const d = new Date(now);
     while (d.getDay() !== target) d.setDate(d.getDate() - 1);
     return d.getTime();
   }
 
-  // 4. "Yesterday"
-  if (/^yesterday\b/i.test(s)) return nowMs - ONE_DAY_MS;
+  // 5. "Apr 22 1:40 PM" / "May 13 2:08 PM" (mes + día + hora)
+  const monthDayTimeMatch = s.match(
+    /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})\s+(.+)$/i
+  );
+  if (monthDayTimeMatch) {
+    let ms = Date.parse(
+      `${monthDayTimeMatch[1]} ${monthDayTimeMatch[2]}, ${currentYear} ${monthDayTimeMatch[3]}`
+    );
+    if (!isNaN(ms)) {
+      if (ms > nowMs)
+        ms = Date.parse(
+          `${monthDayTimeMatch[1]} ${monthDayTimeMatch[2]}, ${currentYear - 1} ${monthDayTimeMatch[3]}`
+        );
+      return isNaN(ms) ? null : ms;
+    }
+  }
 
-  // 5. "Today" o solo hora "3:04 PM"
-  if (/^today\b/i.test(s) || /^\d{1,2}:\d{2}/.test(s)) return nowMs;
+  // 6. "Apr 22" / "May 13" (mes + día sin hora)
+  const monthDayMatch = s.match(
+    /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\s+(\d{1,2})$/i
+  );
+  if (monthDayMatch) {
+    let ms = Date.parse(
+      `${monthDayMatch[1]} ${monthDayMatch[2]}, ${currentYear}`
+    );
+    if (!isNaN(ms)) {
+      if (ms > nowMs)
+        ms = Date.parse(
+          `${monthDayMatch[1]} ${monthDayMatch[2]}, ${currentYear - 1}`
+        );
+      return isNaN(ms) ? null : ms;
+    }
+  }
+
+  // 7. Parseo directo (ISO, fecha completa con año, etc.)
+  const direct = Date.parse(s);
+  if (!isNaN(direct) && direct >= nowMs - TEN_YEARS_MS && direct <= nowMs + ONE_DAY_MS) {
+    return direct;
+  }
 
   return null;
 }
 
 // ---------------------------------------------------------------------------
-// Normalización para dedup app-level
+// Normalización para dedup app-level (servidor)
 // ---------------------------------------------------------------------------
 export function normalizeBody(s: string): string {
   return s.trim().replace(/\s+/g, " ").toLowerCase();
