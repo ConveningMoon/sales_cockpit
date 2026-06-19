@@ -1,7 +1,9 @@
 import { Separator } from "@/components/ui/separator";
-import { statusBadgeClass, statusLabel, groupBadgeClass } from "@/lib/ui-helpers";
+import { groupBadgeClass } from "@/lib/ui-helpers";
+import { StatusSelector } from "./StatusSelector";
 
 type Props = {
+  leadId: string;
   fullName: string | null;
   headline: string | null;
   currentPosition: string | null;
@@ -17,6 +19,7 @@ type Props = {
 };
 
 export function LeadProfile({
+  leadId,
   fullName,
   headline,
   currentPosition,
@@ -34,7 +37,7 @@ export function LeadProfile({
 
   return (
     <aside className="space-y-5">
-      {/* Nombre, headline y badges */}
+      {/* Nombre, headline y control de estado */}
       <div>
         <h2 className="text-[1.25rem] font-semibold leading-tight tracking-tight text-foreground">
           {fullName ?? "Sin nombre"}
@@ -44,12 +47,9 @@ export function LeadProfile({
             {headline}
           </p>
         )}
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <span
-            className={`text-[11px] font-medium px-2 py-0.5 rounded-md ${statusBadgeClass(leadStatus)}`}
-          >
-            {statusLabel(leadStatus)}
-          </span>
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {/* Control de estado: badge semántico + select agrupado */}
+          <StatusSelector leadId={leadId} currentStatus={leadStatus} />
           {csGroup && (
             <span
               className={`text-[11px] font-medium px-2 py-0.5 rounded-md ${groupBadgeClass(csGroup)}`}

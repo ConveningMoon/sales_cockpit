@@ -76,6 +76,7 @@ export default async function FichaPage({ params }: PageProps) {
           {/* Columna izquierda: perfil */}
           <div className="md:sticky md:top-20 md:self-start">
             <LeadProfile
+              leadId={leadId}
               fullName={lead.full_name}
               headline={lead.headline}
               currentPosition={lead.current_position}
