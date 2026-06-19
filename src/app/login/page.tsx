@@ -34,19 +34,27 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50">
+    <main className="min-h-screen flex items-center justify-center bg-background">
       <div className="w-full max-w-sm px-4">
-        <h1 className="text-2xl font-semibold text-center text-gray-900 mb-8">
-          ITMANO Sales Cockpit
-        </h1>
+        {/* Logo + marca */}
+        <div className="flex flex-col items-center mb-8 gap-3">
+          <div
+            className="w-10 h-10 rounded-xl"
+            style={{ background: "var(--gradient-brand)" }}
+          />
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
+            ITMANO Sales Cockpit
+          </h1>
+        </div>
+
         <form
           onSubmit={handleSubmit}
-          className="bg-white shadow-sm rounded-xl border border-gray-200 p-8 space-y-5"
+          className="rounded-xl border border-border bg-card p-8 space-y-5 shadow-[0_4px_24px_hsl(238_16%_4%/0.6)]"
         >
-          <div>
+          <div className="space-y-1.5">
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-gray-700 mb-1.5"
+              className="block text-sm font-medium text-foreground"
             >
               Contraseña
             </label>
@@ -57,18 +65,25 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
-                         focus:outline-none focus:ring-2 focus:ring-gray-900 focus:border-transparent"
+              className="block w-full rounded-lg border border-border bg-input px-3 py-2 text-sm text-foreground
+                         placeholder:text-muted-foreground
+                         focus:outline-none focus:ring-2 focus:ring-ring/60 focus:border-ring/40
+                         transition-colors"
             />
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {error && (
+            <p className="text-sm text-destructive">{error}</p>
+          )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-gray-900 text-white text-sm font-medium py-2.5
-                       hover:bg-gray-700 disabled:opacity-60 transition-colors cursor-pointer"
+            className="w-full rounded-lg text-sm font-semibold py-2.5 text-primary-foreground
+                       disabled:opacity-50 transition-all duration-150
+                       hover:opacity-90 hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]
+                       cursor-pointer"
+            style={{ background: "var(--gradient-brand)" }}
           >
             {loading ? "Verificando…" : "Ingresar"}
           </button>
