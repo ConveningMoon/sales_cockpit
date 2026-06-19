@@ -107,17 +107,28 @@ export function CsvUploader() {
     if (inputRef.current) inputRef.current.value = "";
   }
 
+  const canImport = !!(rows && rows.length > 0);
+
   return (
     <div className="space-y-5 max-w-lg">
-      <div className="space-y-1.5">
-        <p className="text-sm text-muted-foreground">
-          Exporta tus leads desde Linked Helper 2 como CSV y súbelo aquí.
-          El sistema hace upsert por <code className="text-xs bg-muted px-1 py-0.5 rounded">lh_id</code> —
-          los leads existentes se actualizan sin perder el estado ni la clasificación.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Exporta tus leads desde Linked Helper 2 como CSV y súbelo aquí. El sistema hace upsert por{" "}
+        <code className="text-xs bg-muted/80 border border-border/40 px-1 py-0.5 rounded font-mono">
+          lh_id
+        </code>{" "}
+        — los leads existentes se actualizan sin perder el estado ni la clasificación.
+      </p>
 
-      <div className="border-2 border-dashed border-border rounded-lg p-6 text-center space-y-3">
+      {/* Zona de carga */}
+      <div
+        className={[
+          "rounded-xl border-2 border-dashed p-8 text-center space-y-3 transition-colors cursor-pointer",
+          fileName
+            ? "border-primary/35 bg-primary/5"
+            : "border-border/50 bg-card hover:border-border hover:bg-card/80",
+        ].join(" ")}
+        onClick={() => !loading && !fileName && inputRef.current?.click()}
+      >
         <input
           ref={inputRef}
           type="file"
@@ -127,6 +138,7 @@ export function CsvUploader() {
           onChange={handleFileChange}
           disabled={loading}
         />
+
         {!fileName ? (
           <>
             <p className="text-sm text-muted-foreground">
@@ -135,23 +147,30 @@ export function CsvUploader() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => inputRef.current?.click()}
+              onClick={(e) => {
+                e.stopPropagation();
+                inputRef.current?.click();
+              }}
               disabled={loading}
+              className="border-border/60 text-muted-foreground hover:text-foreground"
             >
               Seleccionar archivo
             </Button>
           </>
         ) : (
-          <div className="space-y-1">
-            <p className="text-sm font-medium">{fileName}</p>
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium text-foreground">{fileName}</p>
             {rowCount !== null && (
               <p className="text-xs text-muted-foreground">
                 {rowCount} fila{rowCount !== 1 ? "s" : ""} detectada{rowCount !== 1 ? "s" : ""}
               </p>
             )}
             <button
-              onClick={handleReset}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleReset();
+              }}
+              className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors underline underline-offset-2"
               disabled={loading}
             >
               Cambiar archivo
@@ -160,10 +179,13 @@ export function CsvUploader() {
         )}
       </div>
 
-      {rows && rows.length > 0 && (
+      {canImport && (
         <Button
           onClick={handleImport}
           disabled={loading}
+          className="font-semibold text-primary-foreground disabled:opacity-40 transition-all duration-150
+                     enabled:hover:opacity-90 enabled:hover:shadow-[0_0_16px_hsl(248_82%_67%/0.35)]"
+          style={!loading ? { background: "var(--gradient-brand)" } : undefined}
         >
           {loading
             ? "Importando…"

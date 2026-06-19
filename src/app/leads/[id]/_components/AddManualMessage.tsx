@@ -27,8 +27,6 @@ export function AddManualMessage({ leadId, onMessageAdded, onCancel }: Props) {
 
     setLoading(true);
     try {
-      // Convertir fecha opcional a ISO; si vacía, el endpoint usa now() (sobrescribiremos
-      // con la fecha histórica si se proporcionó)
       let sentAt: string | undefined;
       if (dateStr) {
         const d = new Date(dateStr);
@@ -78,12 +76,17 @@ export function AddManualMessage({ leadId, onMessageAdded, onCancel }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-lg border border-border bg-card p-4 space-y-4">
-      <p className="text-sm font-medium">Agregar mensaje anterior</p>
+    <form
+      onSubmit={handleSubmit}
+      className="rounded-xl border border-border/60 bg-card p-4 space-y-4"
+    >
+      <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
+        Agregar mensaje anterior
+      </p>
 
       {/* Dirección */}
-      <div className="space-y-1.5">
-        <Label>Dirección</Label>
+      <div className="space-y-2">
+        <Label className="text-xs">Dirección</Label>
         <div className="flex gap-2">
           {(["inbound", "outbound"] as const).map((d) => (
             <button
@@ -91,13 +94,15 @@ export function AddManualMessage({ leadId, onMessageAdded, onCancel }: Props) {
               type="button"
               onClick={() => setDirection(d)}
               disabled={loading}
-              className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+              className={[
+                "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
                 direction === d
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-card border-border hover:bg-muted"
-              }`}
+                  ? "border-primary/50 text-primary"
+                  : "bg-background/60 border-border/50 text-muted-foreground hover:border-border hover:text-foreground",
+              ].join(" ")}
+              style={direction === d ? { background: "hsl(248 82% 67% / 0.12)" } : undefined}
             >
-              {d === "inbound" ? "↓ inbound (del lead)" : "↑ outbound (tuyo)"}
+              {d === "inbound" ? "↓ del lead" : "↑ mío"}
             </button>
           ))}
         </div>
@@ -105,23 +110,25 @@ export function AddManualMessage({ leadId, onMessageAdded, onCancel }: Props) {
 
       {/* Cuerpo */}
       <div className="space-y-1.5">
-        <Label htmlFor="manual-body">Mensaje</Label>
+        <Label htmlFor="manual-body" className="text-xs">
+          Mensaje
+        </Label>
         <Textarea
           id="manual-body"
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          rows={4}
+          rows={3}
           placeholder="Texto del mensaje…"
           disabled={loading}
-          className="resize-y text-sm"
+          className="resize-y text-sm bg-background/50 border-border/40 focus:border-primary/40"
         />
       </div>
 
       {/* Fecha opcional */}
       <div className="space-y-1.5">
-        <Label htmlFor="manual-date">
+        <Label htmlFor="manual-date" className="text-xs text-muted-foreground">
           Fecha{" "}
-          <span className="text-muted-foreground font-normal">(opcional — si no se indica, se usa ahora)</span>
+          <span className="font-normal">(opcional — si no se indica, se usa ahora)</span>
         </Label>
         <input
           id="manual-date"
@@ -129,15 +136,32 @@ export function AddManualMessage({ leadId, onMessageAdded, onCancel }: Props) {
           value={dateStr}
           onChange={(e) => setDateStr(e.target.value)}
           disabled={loading}
-          className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-8 w-full rounded-lg border border-border/40 bg-background/50 px-3 py-1
+                     text-xs text-foreground
+                     focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40
+                     disabled:cursor-not-allowed disabled:opacity-50
+                     transition-colors"
         />
       </div>
 
       <div className="flex gap-2">
-        <Button type="submit" size="sm" disabled={loading || !body.trim()}>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={loading || !body.trim()}
+          className="h-7 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+          style={body.trim() && !loading ? { background: "var(--gradient-brand)" } : undefined}
+        >
           {loading ? "Guardando…" : "Agregar"}
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={loading}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onCancel}
+          disabled={loading}
+          className="h-7 text-xs border-border/50 text-muted-foreground hover:text-foreground"
+        >
           Cancelar
         </Button>
       </div>
