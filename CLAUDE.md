@@ -462,7 +462,19 @@ logica: adaptarla.
 - 4 commits separados: `6ea7a6c` (global), `405725d` (bandeja), `c9d8039` (ficha), `47ec844` (formularios).
 - TypeScript limpio + lint clean en todos los commits.
 
-**Proximo paso: Slice 5b (dropdown de modelo + toggle web search; follow-ups vencidos).**
+**Slice 5b-1 completado (2026-06-19).** Control manual de estado del lead:
+- `PATCH /api/leads/[id]`: actualiza solo `lead_status`; valida contra los 9 estados
+  canonicos; override directo, sin pasar por `computeLeadStatus`.
+- `StatusSelector` (client island): badge semantico del estado actual + `<select>` nativo
+  con `<optgroup>` "Pipeline" (nuevo..estrategia_agendada) y "Cierre" (cliente/perdido/descartado).
+  Update optimista con revert en error; `router.refresh()` para reflejar en la bandeja.
+- `LeadProfile`: recibe `leadId`; sustituye el badge estatico por `StatusSelector`.
+- `ui-helpers.ts` ampliado: `en_conversacion` (violeta), `estrategia_agendada` (teal);
+  eliminado `interesado` (no existe en el esquema DB).
+- `computeLeadStatus` no se toca. `PROTECTED_STATUSES` ya cubre `demo_agendada` y
+  `estrategia_agendada` → un inbound posterior no degrada el estado fijado manualmente.
+
+**Proximo paso: Slice 5b restante (dropdown de modelo + toggle web search; follow-ups vencidos).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
