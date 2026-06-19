@@ -38,6 +38,7 @@ export function ImportConversation({
   const [step, setStep] = useState<Step>("idle");
   const [rawText, setRawText] = useState("");
   const [myName, setMyName] = useState(myNameDefault);
+  const [leadNameDisplay, setLeadNameDisplay] = useState(leadFullName);
   const [preview, setPreview] = useState<RawMsg[]>([]);
 
   // Edición inline de cuerpo de mensaje en preview
@@ -48,6 +49,7 @@ export function ImportConversation({
     setStep("idle");
     setRawText("");
     setMyName(myNameDefault);
+    setLeadNameDisplay(leadFullName);
     setPreview([]);
     setEditingIdx(null);
     setEditingBody("");
@@ -68,8 +70,8 @@ export function ImportConversation({
       return;
     }
 
-    // Parseo determinista en el cliente — sin round-trip al servidor
-    const parsed = parseConversationText(rawText, myName.trim(), leadFullName);
+    // Parseo determinista en el cliente — sin round-trip al servidor.
+    const parsed = parseConversationText(rawText, myName.trim());
 
     if (parsed.length === 0) {
       toast.warning("No se detectaron mensajes. Verifica el texto y los nombres.");
@@ -194,18 +196,34 @@ export function ImportConversation({
           {/* Paso 1 — Pegar texto */}
           {step === "idle" && (
             <>
-              <div className="space-y-1.5">
-                <Label htmlFor="import-my-name">Tu nombre en LinkedIn</Label>
-                <Input
-                  id="import-my-name"
-                  value={myName}
-                  onChange={(e) => setMyName(e.target.value)}
-                  placeholder="Ej: Dylan Vergara"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Tal como aparece en la conversación de LinkedIn. Se usa para identificar
-                  tus mensajes (outbound) vs. los del lead (inbound).
-                </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="import-my-name">Tu nombre en LinkedIn</Label>
+                  <Input
+                    id="import-my-name"
+                    value={myName}
+                    onChange={(e) => setMyName(e.target.value)}
+                    placeholder="Ej: Dylan Vergara"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Tal como aparece en la conversación. Tus mensajes se marcan como outbound.
+                  </p>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="import-lead-name">
+                    Nombre del lead{" "}
+                    <span className="text-muted-foreground font-normal">(referencia)</span>
+                  </Label>
+                  <Input
+                    id="import-lead-name"
+                    value={leadNameDisplay}
+                    onChange={(e) => setLeadNameDisplay(e.target.value)}
+                    placeholder="Ej: Jordi Fernández"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Solo visual — el parseo no depende de que coincida exactamente.
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-1.5">

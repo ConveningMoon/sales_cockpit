@@ -412,9 +412,10 @@ logica: adaptarla.
 - `src/lib/ai/conversation-parser.ts` reescrito como funcion pura sin llamadas a IA:
   - `parseConversationText(text, myName, leadName)`: parser linea a linea, cliente-safe.
     Orden de evaluacion: ruido → cabecera de fecha → ancla → cuerpo.
-  - **Ancla**: linea que matchea `<nombre>  <hora>` (2+ espacios), donde el nombre coincide
-    (normalizado: trim+lowercase+sin acentos) con `myName` (outbound) o `leadName` (inbound).
-    Si el nombre no coincide con ninguno, la linea se trata como cuerpo (evita anclas falsas).
+  - **Ancla**: linea que matchea `<nombre>  <hora AM/PM>` (2+ espacios, AM/PM obligatorio
+    al final de linea). Si el nombre normalizado == myName → outbound; cualquier otro nombre
+    valido → inbound. No se depende de matchear el nombre exacto del lead (evita fallos por
+    diferencias de acento o espaciado entre LH2 y LinkedIn).
   - **Ruido ignorado**: `sent the following message(s) at`, `View X's profile...` (apóstrofo
     curvo y recto), `Seen by X at`.
   - **Cabeceras de fecha** (actualizan `currentDate`, no producen mensaje):
@@ -432,6 +433,9 @@ logica: adaptarla.
   Importar bloqueado si hay una edicion abierta sin guardar.
 - El cliente emite `timestamp_raw` (string); el servidor (`import-conversation`) lo resuelve
   a `sent_at` con su propio `now()` — servidor como unica fuente de verdad para la DB.
+- Fix de deteccion de direccion (2026-06-19): la regla de anchor cambio a "mi nombre →
+  outbound; cualquier otro ancla valida → inbound". Elimina dependencia del nombre exacto
+  del lead. Campo "Nombre del lead" en la UI es solo visual (no afecta el parseo).
 
 **Proximo paso: Slice 5b (dropdown de modelo + toggle web search; follow-ups vencidos).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git

@@ -19,11 +19,9 @@ export interface TimestampedMessage extends RawParsedMessage {
 // Orden de evaluación por línea: ruido → cabecera de fecha → ancla → cuerpo.
 export function parseConversationText(
   text: string,
-  myName: string,
-  leadName: string
+  myName: string
 ): RawParsedMessage[] {
   const normMy = normalizeName(myName);
-  const normLead = normalizeName(leadName);
 
   const messages: RawParsedMessage[] = [];
   let currentDate = "";
@@ -62,7 +60,7 @@ export function parseConversationText(
     }
 
     // 3. Ancla por mensaje: <nombre>  <hora> — solo si el nombre coincide
-    const anchor = tryParseAnchor(trimmed, normMy, normLead);
+    const anchor = tryParseAnchor(trimmed, normMy);
     if (anchor) {
       flush();
       const timestamp_raw = currentDate
@@ -93,21 +91,22 @@ function isDateHeader(s: string): boolean {
 
 function tryParseAnchor(
   line: string,
-  normMy: string,
-  normLead: string
+  normMy: string
 ): { direction: "inbound" | "outbound"; time: string } | null {
-  // Patrón: <nombre con 2+ espacios> <hora tipo "1:40 PM">
+  // Patrón estricto: <nombre>  <hora AM/PM al final de línea>
+  // El AM/PM obligatorio al final ya protege contra falsos positivos en el cuerpo.
   const match = line.match(/^(.+?)\s{2,}(\d{1,2}:\d{2}\s*(?:AM|PM))\s*$/i);
   if (!match) return null;
 
   const anchorName = normalizeName(match[1]);
   const time = match[2].trim();
 
+  // En un hilo 1:1 solo hay dos interlocutores: si el nombre es mío → outbound;
+  // cualquier otro nombre válido es el lead → inbound.
+  // No se depende de matchear el nombre exacto del lead (evita fallos por acentos
+  // o diferencias entre lo que guarda LH2 y lo que muestra LinkedIn).
   if (anchorName === normMy) return { direction: "outbound", time };
-  if (anchorName === normLead) return { direction: "inbound", time };
-
-  // Nombre desconocido → tratar como cuerpo (previene anclas falsas en texto libre)
-  return null;
+  return { direction: "inbound", time };
 }
 
 function normalizeName(s: string): string {
