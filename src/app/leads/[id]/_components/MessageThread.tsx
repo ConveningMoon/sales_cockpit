@@ -19,10 +19,18 @@ type Props = {
 };
 
 function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("es", {
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const isThisYear = d.getFullYear() === now.getFullYear();
+
+  if (isToday) {
+    return d.toLocaleTimeString("es", { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleDateString("es", {
     day: "numeric",
     month: "short",
-    year: "numeric",
+    ...(isThisYear ? {} : { year: "numeric" }),
   });
 }
 
@@ -76,14 +84,14 @@ export function MessageThread({ leadId, messages, onMessageUpdated }: Props) {
 
   if (messages.length === 0) {
     return (
-      <p className="text-sm text-muted-foreground py-4 text-center">
+      <p className="text-sm text-muted-foreground py-6 text-center">
         Sin mensajes registrados todavía.
       </p>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {messages.map((msg) => {
         const isOutbound = msg.direction === "outbound";
         const isEditing = editingId === msg.id;
@@ -91,24 +99,32 @@ export function MessageThread({ leadId, messages, onMessageUpdated }: Props) {
         return (
           <div
             key={msg.id}
-            className={`rounded-lg px-4 py-3 text-sm ${
+            className={[
+              "rounded-xl px-4 py-3 text-sm",
+              "transition-colors duration-100",
               isOutbound
-                ? "bg-primary/10 border border-primary/20 ml-6"
-                : "bg-muted border border-border mr-6"
-            }`}
+                ? "bg-primary/8 border border-primary/20 ml-8 hover:bg-primary/10"
+                : "bg-card border border-border mr-8 hover:border-border/80",
+            ].join(" ")}
           >
-            <div className="flex items-center justify-between mb-1.5 gap-2">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {isOutbound ? "Dylan" : "Lead"}
+            {/* Cabecera de mensaje */}
+            <div className="flex items-center justify-between mb-2 gap-2">
+              <span
+                className={[
+                  "text-[10px] font-semibold uppercase tracking-[0.08em]",
+                  isOutbound ? "text-primary/80" : "text-muted-foreground",
+                ].join(" ")}
+              >
+                {isOutbound ? "Tú" : "Lead"}
               </span>
               <div className="flex items-center gap-3">
-                <span className="text-xs text-muted-foreground shrink-0">
+                <span className="text-[10px] text-muted-foreground/60 shrink-0 tabular-nums">
                   {formatDate(msg.sent_at)}
                 </span>
                 {!isEditing && (
                   <button
                     onClick={() => startEdit(msg)}
-                    className="text-xs text-muted-foreground hover:text-foreground transition-colors hover:underline underline-offset-2 disabled:opacity-50"
+                    className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors hover:underline underline-offset-2 disabled:opacity-30"
                     disabled={saving || editingId !== null}
                   >
                     Editar
@@ -118,13 +134,13 @@ export function MessageThread({ leadId, messages, onMessageUpdated }: Props) {
             </div>
 
             {isEditing ? (
-              <div className="space-y-2 mt-2">
+              <div className="space-y-2 mt-1">
                 <Textarea
                   value={editingBody}
                   onChange={(e) => setEditingBody(e.target.value)}
                   rows={Math.max(3, editingBody.split("\n").length)}
                   disabled={saving}
-                  className="resize-y text-sm"
+                  className="resize-y text-sm bg-background/60 border-border/50 focus:border-primary/40"
                   autoFocus
                 />
                 <div className="flex gap-2">
@@ -132,6 +148,7 @@ export function MessageThread({ leadId, messages, onMessageUpdated }: Props) {
                     size="sm"
                     onClick={() => saveEdit(msg.id)}
                     disabled={saving || !editingBody.trim()}
+                    className="h-7 text-xs"
                   >
                     {saving ? "Guardando…" : "Guardar"}
                   </Button>
@@ -140,13 +157,16 @@ export function MessageThread({ leadId, messages, onMessageUpdated }: Props) {
                     variant="outline"
                     onClick={cancelEdit}
                     disabled={saving}
+                    className="h-7 text-xs border-border/50"
                   >
                     Cancelar
                   </Button>
                 </div>
               </div>
             ) : (
-              <p className="whitespace-pre-wrap leading-relaxed">{msg.body}</p>
+              <p className="whitespace-pre-wrap leading-relaxed text-foreground/90">
+                {msg.body}
+              </p>
             )}
           </div>
         );

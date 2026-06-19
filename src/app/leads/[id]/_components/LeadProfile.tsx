@@ -1,5 +1,5 @@
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { statusBadgeClass, statusLabel, groupBadgeClass } from "@/lib/ui-helpers";
 
 type Props = {
   fullName: string | null;
@@ -33,60 +33,66 @@ export function LeadProfile({
   const location = locationName ?? [csCity, csCountry].filter(Boolean).join(", ");
 
   return (
-    <aside className="space-y-4">
-      {/* Nombre y estado */}
+    <aside className="space-y-5">
+      {/* Nombre, headline y badges */}
       <div>
-        <h2 className="text-lg font-semibold leading-tight">
+        <h2 className="text-[1.25rem] font-semibold leading-tight tracking-tight text-foreground">
           {fullName ?? "Sin nombre"}
         </h2>
         {headline && (
-          <p className="text-sm text-muted-foreground mt-0.5">{headline}</p>
+          <p className="text-sm text-muted-foreground mt-1 leading-snug">
+            {headline}
+          </p>
         )}
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <Badge variant="outline" className="text-xs">
-            {leadStatus}
-          </Badge>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <span
+            className={`text-[11px] font-medium px-2 py-0.5 rounded-md ${statusBadgeClass(leadStatus)}`}
+          >
+            {statusLabel(leadStatus)}
+          </span>
           {csGroup && (
-            <Badge variant="secondary" className="text-xs">
+            <span
+              className={`text-[11px] font-medium px-2 py-0.5 rounded-md ${groupBadgeClass(csGroup)}`}
+            >
               Grupo {csGroup}
-            </Badge>
+            </span>
           )}
         </div>
       </div>
 
-      <Separator />
+      <Separator className="opacity-40" />
 
       {/* Datos de trabajo */}
-      <dl className="space-y-2 text-sm">
+      <dl className="space-y-3.5 text-sm">
         {(currentPosition || currentCompany) && (
           <div>
-            <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.08em] mb-0.5">
               Cargo
             </dt>
-            <dd className="mt-0.5">
+            <dd className="text-foreground/90 leading-snug">
               {[currentPosition, currentCompany].filter(Boolean).join(" · ")}
             </dd>
           </div>
         )}
         {location && (
           <div>
-            <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.08em] mb-0.5">
               Ubicación
             </dt>
-            <dd className="mt-0.5">{location}</dd>
+            <dd className="text-foreground/90">{location}</dd>
           </div>
         )}
         {profileUrl && (
           <div>
-            <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.08em] mb-0.5">
               LinkedIn
             </dt>
-            <dd className="mt-0.5">
+            <dd>
               <a
                 href={profileUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline break-all"
+                className="text-primary hover:text-primary/80 hover:underline underline-offset-2 transition-colors break-all text-sm"
               >
                 Ver perfil ↗
               </a>
@@ -95,15 +101,15 @@ export function LeadProfile({
         )}
         {website && (
           <div>
-            <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.08em] mb-0.5">
               Web
             </dt>
-            <dd className="mt-0.5">
+            <dd>
               <a
                 href={website.startsWith("http") ? website : `https://${website}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-primary hover:underline break-all"
+                className="text-primary hover:text-primary/80 hover:underline underline-offset-2 transition-colors break-all text-sm"
               >
                 {website}
               </a>
@@ -115,9 +121,9 @@ export function LeadProfile({
       {/* Summary de LinkedIn */}
       {summary && (
         <>
-          <Separator />
+          <Separator className="opacity-40" />
           <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.08em] mb-2">
               Summary
             </p>
             <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">

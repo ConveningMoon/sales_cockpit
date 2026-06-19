@@ -21,14 +21,12 @@ type Props = {
 
 export function DraftPanel({ leadId, draft, loading }: Props) {
   const router = useRouter();
-  // body es el texto editable; se inicializa con el draft y se resetea
-  // solo cuando llega un draft con distinto id (nuevo borrador generado).
   const [body, setBody] = useState(draft?.body ?? "");
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
     if (draft) setBody(draft.body);
-  }, [draft]); // se ejecuta cuando llega un nuevo draft del servidor; el usuario puede editar sin reset
+  }, [draft]);
 
   async function handleCopy() {
     if (!body.trim()) return;
@@ -64,50 +62,78 @@ export function DraftPanel({ leadId, draft, loading }: Props) {
 
   if (loading) {
     return (
-      <div className="space-y-2 rounded-lg border border-border p-4">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-          Generando borrador…
-        </p>
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-4 w-full" />
-        <Skeleton className="h-4 w-5/6" />
-        <Skeleton className="h-4 w-2/3" />
+      <div className="rounded-xl border border-primary/20 bg-card p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <div
+            className="w-2 h-2 rounded-full animate-pulse"
+            style={{ background: "var(--gradient-brand)" }}
+          />
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
+            Generando borrador…
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-3.5 w-3/4" />
+          <Skeleton className="h-3.5 w-full" />
+          <Skeleton className="h-3.5 w-5/6" />
+          <Skeleton className="h-3.5 w-2/3" />
+          <Skeleton className="h-3.5 w-4/5" />
+        </div>
       </div>
     );
   }
 
   if (!draft) return null;
 
+  const hasText = body.trim().length > 0;
+
   return (
-    <div className="space-y-3 rounded-lg border border-border p-4 bg-card">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Borrador
-        </p>
-        <span className="text-xs text-muted-foreground">{draft.model}</span>
+    <div className="rounded-xl border border-primary/25 bg-card p-5 shadow-[0_2px_16px_hsl(248_82%_67%/0.08)]">
+      {/* Cabecera */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <div
+            className="w-2 h-2 rounded-full shrink-0"
+            style={{ background: "var(--gradient-brand)" }}
+          />
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
+            Borrador
+          </p>
+        </div>
+        <span className="text-[10px] text-muted-foreground/50 font-mono">
+          {draft.model}
+        </span>
       </div>
 
+      {/* Editor del borrador */}
       <Textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
-        rows={8}
-        className="resize-y text-sm leading-relaxed"
+        rows={9}
+        className="resize-y text-sm leading-relaxed bg-background/50 border-border/40
+                   focus:border-primary/40 focus:ring-1 focus:ring-primary/25 transition-colors"
         disabled={sending}
       />
 
-      <div className="flex gap-2 flex-wrap">
+      {/* Acciones */}
+      <div className="flex gap-2 flex-wrap mt-3">
         <Button
           variant="outline"
           size="sm"
           onClick={handleCopy}
-          disabled={!body.trim() || sending}
+          disabled={!hasText || sending}
+          className="border-border/50 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
         >
           Copiar
         </Button>
         <Button
           size="sm"
           onClick={handleSend}
-          disabled={!body.trim() || sending}
+          disabled={!hasText || sending}
+          className="font-semibold text-primary-foreground transition-all duration-150
+                     disabled:opacity-40
+                     enabled:hover:opacity-90 enabled:hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
+          style={hasText && !sending ? { background: "var(--gradient-brand)" } : undefined}
         >
           {sending ? "Guardando…" : "Marcar enviado"}
         </Button>

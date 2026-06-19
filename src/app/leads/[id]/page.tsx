@@ -12,7 +12,6 @@ export default async function FichaPage({ params }: PageProps) {
   const { id: leadId } = await params;
   const supabase = createServerClient();
 
-  // Perfil del lead
   const { data: lead } = await supabase
     .from("leads")
     .select(
@@ -23,14 +22,12 @@ export default async function FichaPage({ params }: PageProps) {
 
   if (!lead) notFound();
 
-  // Hilo de mensajes ordenado cronológicamente
   const { data: messages } = await supabase
     .from("messages")
     .select("id, direction, body, sent_at")
     .eq("lead_id", leadId)
     .order("sent_at", { ascending: true });
 
-  // Borrador pendiente más reciente (si existe)
   const { data: pendingDraft } = await supabase
     .from("drafts")
     .select("id, body, model")
@@ -57,23 +54,23 @@ export default async function FichaPage({ params }: PageProps) {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header con navegación */}
-      <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur">
+      {/* Header */}
+      <header className="sticky top-0 z-10 border-b border-border/40 bg-background/90 backdrop-blur-sm">
         <div className="mx-auto max-w-5xl px-4 py-3 flex items-center gap-3">
           <Link
             href="/"
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            className="text-sm text-muted-foreground/70 hover:text-muted-foreground transition-colors"
           >
             ← Bandeja
           </Link>
-          <span className="text-muted-foreground">/</span>
-          <span className="text-sm font-medium truncate">
+          <span className="text-muted-foreground/40">/</span>
+          <span className="text-sm font-medium text-foreground truncate">
             {lead.full_name ?? "Lead sin nombre"}
           </span>
         </div>
       </header>
 
-      {/* Layout: columnas en desktop, apilado en mobile */}
+      {/* Layout 2 columnas en md+, apilado en mobile */}
       <div className="mx-auto max-w-5xl px-4 py-6">
         <div className="grid gap-8 md:grid-cols-[280px_1fr] lg:grid-cols-[320px_1fr]">
           {/* Columna izquierda: perfil */}
@@ -94,7 +91,7 @@ export default async function FichaPage({ params }: PageProps) {
             />
           </div>
 
-          {/* Columna derecha: hilo + pegado + borrador */}
+          {/* Columna derecha: hilo + banco de trabajo */}
           <div>
             <FichaClient
               leadId={leadId}

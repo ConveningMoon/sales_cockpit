@@ -44,7 +44,6 @@ export function FichaClient({
   const [loading, setLoading] = useState(false);
   const [showAddManual, setShowAddManual] = useState(false);
 
-  // Sincronizar si cambia el lead (navegación entre fichas)
   useEffect(() => {
     setMessages(initialMessages);
     setDraft(initialDraft);
@@ -119,23 +118,21 @@ export function FichaClient({
     draft: { id: string; body: string; model: string } | null;
   }) {
     if (result.draft) setDraft(result.draft);
-    // El import puede haber insertado mensajes con timestamps históricos;
-    // hacemos un reload suave de la página para mostrar el hilo actualizado.
     router.refresh();
   }
 
   return (
     <div className="space-y-6">
-      {/* Hilo de conversación */}
+      {/* ── Hilo de conversación ── */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
+          <h3 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
             Hilo de conversación
           </h3>
           {!showAddManual && (
             <button
               onClick={() => setShowAddManual(true)}
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              className="text-xs text-muted-foreground/60 hover:text-muted-foreground transition-colors underline underline-offset-2"
             >
               + Agregar mensaje
             </button>
@@ -159,9 +156,9 @@ export function FichaClient({
         />
       </section>
 
-      <Separator />
+      <Separator className="opacity-30" />
 
-      {/* Importar conversación de LinkedIn (2 pasos: parse → preview → import) */}
+      {/* ── Importar conversación ── */}
       <section>
         <ImportConversation
           leadId={leadId}
@@ -171,21 +168,16 @@ export function FichaClient({
         />
       </section>
 
-      <Separator />
+      <Separator className="opacity-30" />
 
-      {/* Pegar respuesta recibida (genera borrador) */}
-      <section>
+      {/* ── Banco de trabajo: pegar + borrador ── */}
+      <section className="space-y-4">
         <PasteBox onPaste={handlePaste} loading={loading} />
-      </section>
 
-      {(loading || draft) && (
-        <>
-          <Separator />
-          <section>
-            <DraftPanel leadId={leadId} draft={draft} loading={loading} />
-          </section>
-        </>
-      )}
+        {(loading || draft) && (
+          <DraftPanel leadId={leadId} draft={draft} loading={loading} />
+        )}
+      </section>
     </div>
   );
 }
