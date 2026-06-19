@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { Badge } from "@/components/ui/badge";
 
 type Props = {
   id: string;
@@ -40,16 +39,41 @@ export function LeadCard({
 
   return (
     <Link href={`/leads/${id}`} className="block">
-      <div className="flex items-start justify-between gap-3 rounded-lg border bg-card px-4 py-3 hover:bg-accent/40 transition-colors">
-        <div className="min-w-0 flex-1">
+      <div
+        className={[
+          "relative flex items-start justify-between gap-3",
+          "rounded-xl border bg-card px-4 py-3.5",
+          "shadow-[0_1px_4px_hsl(238_16%_4%/0.45)]",
+          "transition-all duration-150",
+          "hover:bg-accent/25 hover:shadow-[0_2px_10px_hsl(238_16%_4%/0.65)]",
+          awaiting
+            ? "border-primary/30 hover:border-primary/45"
+            : "border-border hover:border-border/70",
+        ].join(" ")}
+      >
+        {/* Barra de acento izquierda para leads esperando respuesta */}
+        {awaiting && (
+          <div
+            className="absolute left-0 top-3 bottom-3 w-[3px] rounded-full"
+            style={{ background: "var(--gradient-brand)" }}
+          />
+        )}
+
+        <div className="min-w-0 flex-1 pl-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium text-sm truncate">
+            <span className="font-semibold text-sm text-foreground truncate">
               {fullName ?? "Sin nombre"}
             </span>
             {awaiting && (
-              <Badge variant="default" className="text-xs shrink-0">
+              <span
+                className="text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 tracking-wide"
+                style={{
+                  background: "var(--gradient-brand)",
+                  color: "hsl(248 20% 8%)",
+                }}
+              >
                 Por responder
-              </Badge>
+              </span>
             )}
           </div>
 
@@ -60,15 +84,15 @@ export function LeadCard({
           )}
 
           {fragment && awaiting ? (
-            <p className="text-xs text-muted-foreground mt-1 line-clamp-2 italic">
+            <p className="text-xs text-muted-foreground/75 mt-1.5 line-clamp-2 italic leading-relaxed">
               &ldquo;{fragment}&rdquo;
             </p>
           ) : location ? (
-            <p className="text-xs text-muted-foreground mt-0.5">{location}</p>
+            <p className="text-xs text-muted-foreground/65 mt-0.5">{location}</p>
           ) : null}
         </div>
 
-        <span className="text-xs text-muted-foreground shrink-0 mt-0.5">
+        <span className="text-[11px] text-muted-foreground/55 shrink-0 mt-0.5 tabular-nums">
           {timeAgo(lastActivity)}
         </span>
       </div>
