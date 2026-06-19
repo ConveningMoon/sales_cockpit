@@ -437,6 +437,31 @@ logica: adaptarla.
   outbound; cualquier otro ancla valida → inbound". Elimina dependencia del nombre exacto
   del lead. Campo "Nombre del lead" en la UI es solo visual (no afecta el parseo).
 
+**Slice 5e completado (2026-06-19).** Rediseno dark premium — puramente visual, funcionalidad intacta:
+- **Paleta dark en `:root`** (siempre oscuro, sin toggle): `--background: 238 16% 7%`,
+  `--card: 238 13% 11%`, `--primary: 248 82% 67%` (indigo-violeta), `--border: 238 15% 22%`,
+  `--gradient-brand: linear-gradient(135deg, hsl(235 85% 65%), hsl(268 78% 65%))`.
+  Scrollbar sutil via `scrollbar-*`. `--radius: 0.625rem` uniforme.
+- **Tipografia:** Inter via `next/font/google` con variable `--font-inter`. Labels de seccion
+  11px uppercase tracking-[0.08em]. Nombre de lead 1.25rem semibold.
+- **`@custom-variant dark`** para compatibilidad con shadcn/ui (clase `dark` en `<html>`).
+- **`src/lib/ui-helpers.ts`**: `statusBadgeClass()`, `groupBadgeClass()`, `statusLabel()` —
+  colores semanticos por estado (nuevo→zinc, respondio→indigo, cliente→emerald, perdido→rose...).
+- **Bandeja** (`LeadCard`, `BandejaClient`): tarjetas con `rounded-xl` + sombra elevada,
+  barra de acento gradiente izquierda para "por responder", badge gradient, jerarquia
+  nombre > empresa/cargo > fragmento > ubicacion. Header con logo gradiente + CTA gradient.
+  Tabs con count chips (badge gradient para "por responder").
+- **Ficha** (`LeadProfile`, `MessageThread`, `PasteBox`, `DraftPanel`, `FichaClient`, `page.tsx`):
+  badges semanticos en perfil, burbujas chat diferenciadas (primary/8 vs card), offset ml-8/mr-8,
+  etiqueta "Tu"/"Lead" coloreada, fecha relativa (hora si es hoy). PasteBox con borde primary/25
+  y glow sutil. DraftPanel con punto gradiente + boton "Marcar enviado" gradient. Header ficha
+  con breadcrumb muted.
+- **Formularios** (`AddManualMessage`, `ImportConversation`, `CsvUploader`, `NewLeadForm`):
+  inputs con bg-background/50 y border-border/40, focus primario; CTAs con gradiente de marca;
+  zona de drop CSV con tinte primary cuando cargado; chips de direccion con tinte gradient.
+- 4 commits separados: `6ea7a6c` (global), `405725d` (bandeja), `c9d8039` (ficha), `47ec844` (formularios).
+- TypeScript limpio + lint clean en todos los commits.
+
 **Proximo paso: Slice 5b (dropdown de modelo + toggle web search; follow-ups vencidos).**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
@@ -459,6 +484,8 @@ logica: adaptarla.
      **COMPLETADO.**
    - **5d:** importador de conversacion + alta manual de mensaje anterior + flag no_draft.
      Parser determinista cliente-side (sin IA); preview editable. **COMPLETADO.**
+   - **5e:** rediseno dark premium del cockpit (paleta, tipografia, tarjetas, badges semanticos,
+     gradientes CTA). 4 commits. **COMPLETADO.**
    - **5b (pendiente):** dropdown de modelo + toggle web search por generacion de borrador;
      vista follow-ups vencidos.
 6. **Pipeline batch:** subir CSV -> clasificar -> cachear market_data -> generar 3 mensajes
