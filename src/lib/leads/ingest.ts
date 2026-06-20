@@ -18,10 +18,12 @@ export function computeLeadStatus(existing: LeadStatus | null): LeadStatus {
 
 // newLeadStatus: status a asignar cuando el lead NO existe aún.
 // Usar "nuevo" para importación CSV (prospección); el default "respondio" es para inbound via cockpit.
+// batchId: si se pasa, se escribe en leads.batch_id (actualiza al batch más reciente en re-import).
 export async function upsertLead(
   supabase: SupabaseClient<Database>,
   leadData: Lh2LeadData,
-  newLeadStatus: LeadStatus = "respondio"
+  newLeadStatus: LeadStatus = "respondio",
+  batchId?: string | null
 ): Promise<{ id: string; lead_status: LeadStatus; full_name: string | null }> {
   const { data: existing } = await supabase
     .from("leads")
@@ -36,10 +38,13 @@ export async function upsertLead(
   // Supabase upsert solo incluye los campos proporcionados en el UPDATE SET;
   // los campos ausentes (cs_group, score, etc.) no se sobreescriben en leads existentes.
   // La aserción es segura — el runtime maneja correctamente el partial insert.
+  const upsertPayload: Record<string, unknown> = { ...leadData, lead_status: newStatus };
+  if (batchId !== undefined) upsertPayload.batch_id = batchId;
+
   const { data, error } = await supabase
     .from("leads")
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .upsert({ ...leadData, lead_status: newStatus } as any, { onConflict: "lh_id" })
+    .upsert(upsertPayload as any, { onConflict: "lh_id" })
     .select("id, full_name, lead_status")
     .single();
 
