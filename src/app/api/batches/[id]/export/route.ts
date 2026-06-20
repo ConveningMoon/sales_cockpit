@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 
-// RFC 4180 con delimitador ";" (formato LH2).
-// Envuelve en comillas si el valor contiene ";", '"', CR o LF; escapa comillas internas.
+// Formato que LH2 acepta al IMPORTAR: delimitador "," y TODOS los campos
+// entrecomillados (header y datos, sin excepcion). Las comillas internas se
+// escapan duplicandolas (" -> ""). Esto ademas blinda los mensajes que traen
+// comas, saltos de linea y emojis sin romper columnas.
+// (Asimetria de LH2: exporta con ";", pero importa con ",".)
 function csvCell(val: string | null): string {
-  const s = val ?? "";
-  if (s.includes(";") || s.includes('"') || s.includes("\n") || s.includes("\r")) {
-    return '"' + s.replace(/"/g, '""') + '"';
-  }
-  return s;
+  return '"' + (val ?? "").replace(/"/g, '""') + '"';
 }
 
 function csvRow(cells: (string | null)[]): string {
-  return cells.map(csvCell).join(";");
+  return cells.map(csvCell).join(",");
 }
 
 export async function GET(
@@ -50,7 +49,17 @@ export async function GET(
     );
   }
 
-  const header = "lh_id;profile_url;full_name;cs_group;cs_city;cs_country;cs_msg_opener;cs_fu1;cs_fu2";
+  const header = csvRow([
+    "lh_id",
+    "profile_url",
+    "full_name",
+    "cs_group",
+    "cs_city",
+    "cs_country",
+    "cs_msg_opener",
+    "cs_fu1",
+    "cs_fu2",
+  ]);
   const rows = [header];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

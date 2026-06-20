@@ -589,6 +589,13 @@ logica: adaptarla.
   - Preview, conteo e import usan el mismo set filtrado: lo que se muestra == lo que se clasifica.
   - Bytes no-UTF8 en el campo `note` de LH2 son reemplazados por U+FFFD por el FileReader; no
     bloquean el parseo — solo se aborta si el set filtrado queda vacío.
+  - **Asimetría de delimitador (CRÍTICO — verificado comparando un export rechazado vs. uno aceptado):**
+    LH2 usa delimitadores distintos en cada dirección.
+    - **Import (leer el CSV que LH2 exporta):** delimitador `;`. PapaParse con `delimiter: ";"`.
+    - **Export (armar el CSV para importar a LH2):** delimitador `,` (coma) y **todos** los campos
+      entre comillas dobles — header y datos, sin excepción. Comillas internas escapadas como `""`.
+      Finales de línea CRLF (`\r\n`), UTF-8 **sin BOM**. Con `;`, LH2 lee toda la fila como una
+      sola columna y rechaza el archivo. Implementado en `GET /api/batches/[id]/export`.
 
 **Slice 6 Push B completado (2026-06-21).** Generacion de secuencias via Batch API + export CSV:
 - **Migracion 006** (`supabase/migrations/006_outreach_batch.sql`):
@@ -612,8 +619,10 @@ logica: adaptarla.
   (onConflict lead_id,kind). `recordAiUsage` con `context.market_data: bool` (false = grupo A sin
   dato de mercado). >= 1 exito -> status `done` + limpia `outreach_batch_id`. 0 exitos -> error.
 - **`GET /api/batches/[id]/export`**: JOIN leads A/B con outreach_sequence (kind=cold/fu1/fu2)
-  via select("..., outreach_sequence(kind, body)"). CSV RFC 4180 con delimitador ";". Columnas:
-  `lh_id;profile_url;full_name;cs_group;cs_city;cs_country;cs_msg_opener;cs_fu1;cs_fu2`.
+  via select("..., outreach_sequence(kind, body)"). CSV para importar a LH2: delimitador `,`
+  (coma), **todos** los campos entre comillas dobles (escape `""`), CRLF, UTF-8 sin BOM
+  (ver "Asimetría de delimitador" arriba). Columnas en orden:
+  `lh_id, profile_url, full_name, cs_group, cs_city, cs_country, cs_msg_opener, cs_fu1, cs_fu2`.
   Content-Disposition: attachment.
 - **`BatchPipeline.tsx`**: estado `generating` -> boton "Generar secuencias" (o "Verificar
   progreso" si outreachBatchInFlight). Loop poll 5s hasta ended. Toast de advertencia si leads A
