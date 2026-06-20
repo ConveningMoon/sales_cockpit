@@ -117,6 +117,29 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
     }
   }
 
+  async function resetAndRetryMarket() {
+    setRunning(true);
+    setLocalError(null);
+    try {
+      const { ok, data } = await safeFetch<{ ok?: boolean; error?: string }>(
+        `/api/batches/${batchId}/reset-market`,
+        { method: "POST" },
+      );
+      if (!ok) {
+        const msg = (data?.error) ?? "Error al reintentar datos de mercado.";
+        setLocalError(msg);
+        toast.error(msg);
+        setStatus("error");
+        return;
+      }
+      setStatus("fetching_market");
+    } finally {
+      setRunning(false);
+    }
+    // runMarketData maneja su propio running/finally — llamarlo fuera del bloque
+    await runMarketData();
+  }
+
   async function runMarketData() {
     setRunning(true);
     setLocalError(null);
@@ -263,6 +286,18 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
               : marketBatchInFlight
                 ? "Verificar progreso del mercado"
                 : "Obtener datos de mercado"}
+          </Button>
+        )}
+
+        {status === "error" && (
+          <Button
+            onClick={resetAndRetryMarket}
+            disabled={running}
+            className="font-semibold text-primary-foreground disabled:opacity-40 transition-all duration-150
+                       enabled:hover:opacity-90 enabled:hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
+            style={!running ? { background: "var(--gradient-brand)" } : undefined}
+          >
+            {running ? "Reintentando mercado…" : "Reintentar datos de mercado"}
           </Button>
         )}
 
