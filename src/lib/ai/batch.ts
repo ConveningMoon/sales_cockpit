@@ -7,7 +7,9 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export const MARKET_DATA_MODEL = "claude-sonnet-4-6";
 const WEB_SEARCH_MAX_USES = 4;
-const MAX_TOKENS = 1024;
+// Con los campos acotados el JSON es chico; 3000 da margen de sobra y elimina la
+// truncación que cortaba el JSON a mitad de string (vista en Perú y otras geos).
+const MAX_TOKENS = 3000;
 
 export interface MarketGeo {
   country: string;
