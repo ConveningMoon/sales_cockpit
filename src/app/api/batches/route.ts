@@ -36,8 +36,11 @@ export async function POST(req: NextRequest) {
 
   if (batchErr || !batch) {
     return NextResponse.json(
-      { error: `Error al crear el batch: ${batchErr?.message ?? "desconocido"}` },
-      { status: 500 }
+      {
+        error: `Error al crear el batch en base de datos: ${batchErr?.message ?? "respuesta vacía"}`,
+        stage: "import",
+      },
+      { status: 500 },
     );
   }
 

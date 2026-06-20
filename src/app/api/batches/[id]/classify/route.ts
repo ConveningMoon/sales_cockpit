@@ -56,12 +56,19 @@ export async function POST(
     .maybeSingle();
 
   if (!batch) {
-    return NextResponse.json({ error: "Batch no encontrado." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Batch no encontrado.", stage: "classify" },
+      { status: 404 },
+    );
   }
   if (batch.status !== "pending" && batch.status !== "classifying") {
     return NextResponse.json(
-      { error: `El batch está en estado "${batch.status}", no se puede clasificar.` },
-      { status: 409 }
+      {
+        error: `El batch está en estado "${batch.status}", no se puede clasificar.`,
+        stage: "classify",
+        context: { batchStatus: batch.status },
+      },
+      { status: 409 },
     );
   }
 
@@ -111,14 +118,16 @@ export async function POST(
 
       classified++;
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push({ leadId: lead.id, message: msg });
-      // Fallback conservador: marcar como NO_ESCRIBIR para no bloquear el loop
+      const cause = err instanceof Error ? err.message : String(err);
+      // Incluir el nombre del lead para facilitar el diagnóstico
+      const detail = `Lead "${String(lead.full_name ?? lead.id)}": ${cause}`;
+      errors.push({ leadId: lead.id, message: detail });
+      // Fallback conservador: NO_ESCRIBIR para no bloquear el loop
       await supabase
         .from("leads")
         .update({ cs_group: "NO_ESCRIBIR" } as Record<string, unknown>)
         .eq("id", lead.id);
-      classified++; // cuenta como procesado
+      classified++;
     }
   }
 

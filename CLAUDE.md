@@ -510,6 +510,21 @@ logica: adaptarla.
     fetching_market → generating (mensaje "Push B pendiente") → done. Cada etapa tiene boton
     propio; "Retomar" si el status quedó en classifying sin running.
   - Bandeja: link "Batches" en el header junto a "+ Nuevo lead".
+- **Market data — arquitectura anti-timeout:**
+  - El endpoint procesa UNA geografía por llamada. El cliente hace loop hasta `done: true`.
+  - `web_search_20260209` con `max_uses: 4` (constante `WEB_SEARCH_MAX_USES` en el endpoint).
+    Limita búsquedas por geografía → acota latencia < 60s y costo por request.
+  - `webSearchMaxUses?: number` propagado en `AICallOptions` → `ProviderCallParams` → provider.
+  - Pasada única de N queries para encontrar target + contar `remaining` (antes eran 2 pasadas × N).
+  - En error: escribe `status="error"` + `error_message` verbatim en `batches` y devuelve
+    `{ error, stage, context }`. Nunca traga el error en un mensaje genérico.
+  - Progreso en la UI: "Buscando mercado: Madrid, España — 2/4" — sin "(caché)" ambiguo.
+- **Principio de errores verbatim (app beta personal):**
+  - Todos los endpoints del pipeline devuelven `{ error: <mensaje real>, stage: <etapa>, context: <detalle> }`.
+  - Los errores fatales (market-data) escriben en `batches.error_message` y avanzan el status a `"error"`.
+  - La UI (`BatchPipeline`) muestra el detalle exacto (localError inmediato + router.refresh() para el de DB).
+  - Errores por lead en clasificación incluyen el nombre del lead y la causa exacta de Haiku.
+  - Nunca "Error." genérico — siempre mensaje + etapa + contexto.
 - **Parseo CSV de LH2 — contrato canonico:**
   - Delimitador: `;` (LH2 siempre exporta con punto y coma). PapaParse con `delimiter: ";"` explícito.
   - `skipEmptyLines: "greedy"` — descarta filas donde todos los campos son vacíos/espacios.

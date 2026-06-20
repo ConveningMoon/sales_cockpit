@@ -42,9 +42,24 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
   const [status, setStatus] = useState<BatchStatus>(initialStatus);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
+  // Detalle de error local — se muestra antes de que router.refresh() cargue el de DB
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  function showError(data: { error?: string; stage?: string; context?: unknown }, fallback: string) {
+    const parts = [
+      data.error ?? fallback,
+      data.stage ? `[etapa: ${data.stage}]` : null,
+      data.context ? `Contexto: ${JSON.stringify(data.context)}` : null,
+    ].filter(Boolean).join(" — ");
+    setLocalError(parts);
+    toast.error(parts);
+    setStatus("error");
+    router.refresh(); // cargar error_message de DB
+  }
 
   async function runClassify() {
     setRunning(true);
+    setLocalError(null);
     setStatus("classifying");
     let classified = 0;
 
@@ -58,11 +73,12 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
           done?: boolean;
           errors?: { leadId: string; message: string }[];
           error?: string;
+          stage?: string;
+          context?: unknown;
         };
 
         if (!res.ok) {
-          toast.error(data.error ?? "Error en la clasificación.");
-          setStatus("error");
+          showError(data, "Error en la clasificación.");
           return;
         }
 
@@ -71,7 +87,10 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
         setProgress(`${classified} / ${total} clasificado${classified !== 1 ? "s" : ""}`);
 
         if (data.errors && data.errors.length > 0) {
-          toast.warning(`${data.errors.length} lead${data.errors.length !== 1 ? "s" : ""} con error de clasificación (marcado${data.errors.length !== 1 ? "s" : ""} como NO_ESCRIBIR).`);
+          // Mostrar el primer error con detalle; resumir el resto
+          const first = data.errors[0].message;
+          const extra = data.errors.length > 1 ? ` (+${data.errors.length - 1} más)` : "";
+          toast.warning(`Clasificación parcial: ${first}${extra}`);
         }
 
         if (data.done) break;
@@ -81,8 +100,10 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
       setStatus("fetching_market");
       setProgress(null);
       router.refresh();
-    } catch {
-      toast.error("Error de red durante la clasificación.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error de red durante la clasificación.";
+      setLocalError(msg);
+      toast.error(msg);
       setStatus("error");
     } finally {
       setRunning(false);
@@ -91,8 +112,7 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
 
   async function runMarketData() {
     setRunning(true);
-    let processed = 0;
-    let cached = 0;
+    setLocalError(null);
 
     try {
       while (true) {
@@ -100,26 +120,23 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
         const data = (await res.json()) as {
           done?: boolean;
           total?: number;
-          processed?: number;
-          cached?: number;
           remaining?: number;
-          country?: string;
+          country?: string | null;
           city?: string | null;
           error?: string;
+          stage?: string;
+          context?: unknown;
         };
 
         if (!res.ok) {
-          toast.error(data.error ?? "Error al obtener datos de mercado.");
-          setStatus("error");
+          showError(data, "Error al obtener datos de mercado.");
           return;
         }
 
-        if (data.processed) processed += data.processed;
-        if (data.cached) cached += data.cached;
-
         if (data.country) {
           const geo = [data.city, data.country].filter(Boolean).join(", ");
-          setProgress(`Mercado: ${geo}${data.cached ? " (caché)" : " ✓"} — ${processed + cached} / ${data.total ?? "?"}`);
+          const done = (data.total ?? 0) - (data.remaining ?? 0);
+          setProgress(`Buscando mercado: ${geo} — ${done} / ${data.total ?? "?"}`);
         }
 
         if (data.done) break;
@@ -129,8 +146,10 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
       setStatus("generating");
       setProgress(null);
       router.refresh();
-    } catch {
-      toast.error("Error de red al obtener datos de mercado.");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error de red al obtener datos de mercado.";
+      setLocalError(msg);
+      toast.error(msg);
       setStatus("error");
     } finally {
       setRunning(false);
@@ -149,10 +168,10 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
         )}
       </div>
 
-      {/* Error */}
-      {status === "error" && errorMessage && (
-        <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900/60 rounded-lg px-4 py-3">
-          {errorMessage}
+      {/* Error — se muestra el detalle local inmediato o el de DB tras router.refresh() */}
+      {status === "error" && (localError ?? errorMessage) && (
+        <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900/60 rounded-lg px-4 py-3 whitespace-pre-wrap wrap-break-word">
+          {localError ?? errorMessage}
         </p>
       )}
 
