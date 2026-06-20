@@ -134,6 +134,7 @@ export interface Batch {
   error_message: string | null;
   market_batch_id: string | null;
   market_batch_geos: { country: string; city: string | null }[] | null;
+  outreach_batch_id: string | null;
   imported_at: string;
 }
 
