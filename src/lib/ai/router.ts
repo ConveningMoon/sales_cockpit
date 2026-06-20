@@ -1,5 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server";
-import type { AICallOptions, AICallResult, AIRouterConfig } from "./types";
+import type { AICallOptions, AICallResult, AIRouterConfig, ProviderResult } from "./types";
 import type { AiTaskType } from "@/types/database";
 import { getModel, DEFAULT_MODELS } from "./models";
 import { AnthropicProvider, OpenRouterProvider } from "./provider";
@@ -38,14 +38,52 @@ export async function callAI(options: AICallOptions): Promise<AICallResult> {
   const provider =
     modelConfig.provider === "anthropic" ? anthropicProvider : openRouterProvider;
 
-  const raw = await provider.complete({
-    systemPrompt: options.systemPrompt,
-    userMessage: options.userMessage,
-    model: modelId,
-    maxTokens: options.maxTokens ?? 2048,
-    webSearch: options.webSearch ?? false,
-    webSearchMaxUses: options.webSearchMaxUses,
-  });
+  const startMs = Date.now();
+  let raw: ProviderResult;
+
+  try {
+    raw = await provider.complete({
+      systemPrompt: options.systemPrompt,
+      userMessage: options.userMessage,
+      model: modelId,
+      maxTokens: options.maxTokens ?? 2048,
+      webSearch: options.webSearch ?? false,
+      webSearchMaxUses: options.webSearchMaxUses,
+    });
+  } catch (err) {
+    const durationMs = Date.now() - startMs;
+    const errorDetail = err instanceof Error
+      ? `${err.name}: ${err.message}`
+      : String(err);
+
+    console.error(`[AI] FALLO | ${options.taskType} | ${modelId} | ${durationMs}ms`, {
+      error: errorDetail,
+      context: options.context ?? null,
+      webSearch: options.webSearch ?? false,
+    });
+
+    // Log del intento fallido — no bloqueante, no oculta el error original
+    logAiUsage({
+      taskType: options.taskType,
+      model: modelId,
+      provider: modelConfig.provider,
+      leadId: options.leadId,
+      status: "error",
+      errorDetail,
+      durationMs,
+      context: options.context,
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedTokens: 0,
+      costUsd: 0,
+    }).catch((logErr) =>
+      console.error("[AI Router] Error al registrar ai_usage (intento fallido):", logErr)
+    );
+
+    throw err;
+  }
+
+  const durationMs = Date.now() - startMs;
 
   const tokenCostUsd =
     raw.inputTokens * modelConfig.costPerInputToken +
@@ -59,12 +97,20 @@ export async function callAI(options: AICallOptions): Promise<AICallResult> {
 
   const costUsd = tokenCostUsd + webSearchCostUsd;
 
-  // Registrar en ai_usage de forma no bloqueante
+  console.log(
+    `[AI] OK | ${options.taskType} | ${modelId} | ${durationMs}ms | ` +
+    `in=${raw.inputTokens} out=${raw.outputTokens} cached=${raw.cachedTokens} ` +
+    `searches=${raw.webSearchRequests} cost=$${costUsd.toFixed(4)}`
+  );
+
   logAiUsage({
     taskType: options.taskType,
     model: modelId,
     provider: modelConfig.provider,
     leadId: options.leadId,
+    status: "ok",
+    durationMs,
+    context: options.context,
     inputTokens: raw.inputTokens,
     outputTokens: raw.outputTokens,
     cachedTokens: raw.cachedTokens,
@@ -95,17 +141,26 @@ async function logAiUsage(params: {
   outputTokens: number;
   cachedTokens: number;
   costUsd: number;
+  status: "ok" | "error";
+  errorDetail?: string;
+  durationMs?: number;
+  context?: Record<string, unknown>;
 }) {
   const supabase = createServerClient();
-  const { error } = await supabase.from("ai_usage").insert({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase.from("ai_usage") as any).insert({
     task_type: params.taskType,
     model: params.model,
     provider: params.provider,
     lead_id: params.leadId ?? null,
-    input_tokens: params.inputTokens,
-    output_tokens: params.outputTokens,
-    cached_tokens: params.cachedTokens,
-    cost_usd: params.costUsd,
+    input_tokens: params.inputTokens || null,
+    output_tokens: params.outputTokens || null,
+    cached_tokens: params.cachedTokens || null,
+    cost_usd: params.costUsd || null,
+    status: params.status,
+    error_detail: params.errorDetail ?? null,
+    duration_ms: params.durationMs ?? null,
+    context: params.context ?? null,
   });
   if (error) throw error;
 }

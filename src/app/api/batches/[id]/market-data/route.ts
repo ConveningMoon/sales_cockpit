@@ -162,6 +162,8 @@ export async function POST(
   }
 
   const geoLabel = [target.city, target.country].filter(Boolean).join(", ");
+  console.log(`[market-data] batch=${batchId} geo="${geoLabel}" pending=${pendingCount} — llamando Sonnet+webSearch (max_uses=${WEB_SEARCH_MAX_USES})`);
+
   const { system, userTemplate } = getMarketDataPrompt();
   const userMessage = buildMarketUserMessage(userTemplate, target.country, target.city);
 
@@ -176,6 +178,7 @@ export async function POST(
       maxTokens: 1024,
       webSearch: true,
       webSearchMaxUses: WEB_SEARCH_MAX_USES,
+      context: { batch_id: batchId, country: target.country, city: target.city },
     });
     rawContent = result.content;
     parsed = parseMarketDataJson(rawContent);
@@ -185,6 +188,7 @@ export async function POST(
       ? ` Respuesta recibida: "${rawContent.slice(0, 300)}"`
       : "";
     const msg = `Geografía "${geoLabel}": ${cause}.${snippet}`;
+    console.error(`[market-data] batch=${batchId} geo="${geoLabel}" — ERROR: ${msg}`);
     await markBatchError(supabase, batchId, msg);
     return NextResponse.json(
       { error: msg, stage: "market_data", context: { country: target.country, city: target.city } },
@@ -226,6 +230,7 @@ export async function POST(
   // remaining = pendingCount - 1 (acabamos de procesar target)
   const remaining = pendingCount - 1;
   const done = remaining === 0;
+  console.log(`[market-data] batch=${batchId} geo="${geoLabel}" — OK upsert en market_data, remaining=${remaining}`);
 
   if (done) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

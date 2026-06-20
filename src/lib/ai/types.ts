@@ -32,6 +32,7 @@ export interface AICallOptions {
   webSearchMaxUses?: number;
   leadId?: string;
   maxTokens?: number;
+  context?: Record<string, unknown>;
 }
 
 export interface ProviderResult {

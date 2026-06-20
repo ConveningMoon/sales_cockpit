@@ -94,6 +94,8 @@ export async function POST(
   let classified = 0;
   const errors: { leadId: string; message: string }[] = [];
 
+  console.log(`[classify] batch=${batchId} — clasificando ${pending.length} lead${pending.length !== 1 ? "s" : ""}`);
+
   for (const lead of pending) {
     const userMessage = buildUserMessage(userTemplate, lead as unknown as Record<string, unknown>);
     try {
@@ -103,6 +105,7 @@ export async function POST(
         userMessage,
         maxTokens: 256,
         leadId: lead.id,
+        context: { batch_id: batchId },
       });
 
       const parsed = parseClassifyJson(result.content);
