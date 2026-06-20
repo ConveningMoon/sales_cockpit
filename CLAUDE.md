@@ -474,7 +474,44 @@ logica: adaptarla.
 - `computeLeadStatus` no se toca. `PROTECTED_STATUSES` ya cubre `demo_agendada` y
   `estrategia_agendada` → un inbound posterior no degrada el estado fijado manualmente.
 
-**Proximo paso: Slice 5b restante (dropdown de modelo + toggle web search; follow-ups vencidos).**
+**Slice 6 Push A completado (2026-06-20).** Pipeline batch — Fases 1-3:
+- **Migracion 003** (`supabase/migrations/003_batch_pipeline.sql`):
+  - `batches`: columnas `status` (enum 6 estados) y `error_message`.
+  - `market_data`: columnas `price_sqm`, `sale_velocity`, `buyer_profile`, `demand_level`,
+    `market_paragraph` (complementan las columnas legacy `stat`/`common_problem`).
+- **`DEFAULT_MODELS.market_data`** cambiado de Haiku a Sonnet 4.6 (Haiku no soporta web search).
+- **`src/types/database.ts`**: `BatchStatus` union type; `Batch` e `MarketData` actualizados.
+- **`src/lib/ai/prompts.ts`** (nuevo): loader lazy + parser de `## SYSTEM` / `## USER` para
+  `prompts/clasificacion.md` y `prompts/market-data.md`. `cleanJsonOutput()` (strips fences +
+  trailing commas) compartido. Rutas leidas con `fs.readFileSync` en cold-start.
+- **`src/lib/leads/ingest.ts`**: `upsertLead()` acepta `batchId?` como 4o parametro opcional;
+  cuando se pasa, escribe `batch_id` en el lead. Callers anteriores sin cambio.
+- **`POST /api/batches`**: crea batch (status='pending'), importa leads con `parseLh2LeadRow`
+  + `upsertLead(..., "nuevo", batchId)`, actualiza `lead_count`. Retorna
+  `{ batchId, leadCount, created, updated, errors }`. `maxDuration=60`.
+- **`POST /api/batches/[id]/classify`**: clasifica hasta 20 leads por llamada (sin `cs_group`).
+  Usa Haiku via `callAI({ taskType:"clasificacion" })`. Fallback a `NO_ESCRIBIR` en error
+  de parseo (evita loop infinito). Avanza status a `fetching_market` cuando remaining=0.
+  Retorna `{ classified, total, remaining, done, errors }`.
+- **`POST /api/batches/[id]/market-data`**: una geografia por llamada. Valida cache con
+  TTL de 30 dias (`expires_at > now()`). Llama Sonnet+webSearch via `callAI({ taskType:"market_data",
+  webSearch:true, maxTokens:1024 })`. Parsea JSON de 6 campos; upsert en `market_data` con
+  `onConflict: "country,city"`. Query null-safe: `.eq("city", val)` o `.is("city", null)` segun
+  valor. Avanza status a `generating` cuando todas las geos tienen cache. Retorna
+  `{ done, total, processed, cached, remaining, country, city }`.
+- **UI batch** (nueva seccion de rutas `/batches/*`):
+  - `/batches` — lista de batches con badge de status; link a `/batches/new`.
+  - `/batches/new` — `BatchCsvUploader` (client): PapaParse en browser, campo nombre, zona
+    de drop, POST a `/api/batches`, redirect a ficha del batch.
+  - `/batches/[id]` — detalle: info del batch, desglose por grupo A/B/NO_ESCRIBIR/sin_clasificar,
+    `BatchPipeline` (client island).
+  - `BatchPipeline` (client): loop chunked para clasificar (muestra N/total), loop chunked para
+    market-data (muestra geo actual y cache hits). Estados: pending → classifying →
+    fetching_market → generating (mensaje "Push B pendiente") → done. Cada etapa tiene boton
+    propio; "Retomar" si el status quedó en classifying sin running.
+  - Bandeja: link "Batches" en el header junto a "+ Nuevo lead".
+
+**Proximo paso: Push B — generacion de secuencias via Batch API + export LH2 CSV.**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
@@ -500,8 +537,12 @@ logica: adaptarla.
      gradientes CTA). 4 commits. **COMPLETADO.**
    - **5b (pendiente):** dropdown de modelo + toggle web search por generacion de borrador;
      vista follow-ups vencidos.
-6. **Pipeline batch:** subir CSV -> clasificar -> cachear market_data -> generar 3 mensajes
-   por lead -> exportar CSV.
+6. **Pipeline batch:**
+   - **Push A (Fases 1-3):** migracion 003, endpoints classify + market-data (chunked, cache
+     30d), UI `/batches/*` con `BatchPipeline`. **COMPLETADO (2026-06-20).**
+   - **Push B (Fase 4-5, pendiente):** generacion de secuencias via Batch API (Sonnet) +
+     export CSV LH2 con columnas `lh_id, profile_url, full_name, cs_group, cs_city, cs_country,
+     cs_msg_opener, cs_fu1, cs_fu2`. Requiere `prompts/outreach-sequence.md` de Dylan.
 
 ---
 

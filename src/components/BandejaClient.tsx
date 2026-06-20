@@ -39,15 +39,24 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap }: Props) {
               Sales Cockpit
             </span>
           </div>
-          <Link
-            href="/leads/new"
-            className="rounded-lg px-3.5 py-1.5 text-xs font-semibold text-primary-foreground
-                       transition-all duration-150 hover:opacity-90
-                       hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
-            style={{ background: "var(--gradient-brand)" }}
-          >
-            + Nuevo lead
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/batches"
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground border border-border/50
+                         hover:text-foreground hover:border-border transition-colors"
+            >
+              Batches
+            </Link>
+            <Link
+              href="/leads/new"
+              className="rounded-lg px-3.5 py-1.5 text-xs font-semibold text-primary-foreground
+                         transition-all duration-150 hover:opacity-90
+                         hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
+              style={{ background: "var(--gradient-brand)" }}
+            >
+              + Nuevo lead
+            </Link>
+          </div>
         </div>
       </header>
 
