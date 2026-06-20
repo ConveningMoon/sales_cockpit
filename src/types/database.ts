@@ -160,6 +160,10 @@ export interface AiUsage {
   output_tokens: number | null;
   cached_tokens: number | null;
   cost_usd: number | null;
+  status: "ok" | "error";
+  error_detail: string | null;
+  duration_ms: number | null;
+  context: Record<string, unknown> | null;
   created_at: string;
 }
 
