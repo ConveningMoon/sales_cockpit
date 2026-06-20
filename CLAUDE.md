@@ -563,6 +563,18 @@ logica: adaptarla.
     `safeFetch` hasta `ended`. Progreso "Procesando mercado (batch async)… N/total". Resumible:
     si `market_batch_id` existe al recargar, el botón pasa a "Verificar progreso del mercado".
   - Edge `pause_turn`: la geo se marca como error (reintento via re-submit, que salta cacheadas).
+  - **Parser robusto del resultado (`extractJsonObject` en `prompts.ts`):** el modelo a veces
+    narra antes del JSON ("Con los datos recopilados, genero el JSON:") aunque use web search,
+    o lo envuelve en ```json. `iterateMarketResults` ya concatena todos los bloques `type:"text"`;
+    el parser tolera prosa/fence alrededor: (1) si hay fence cerrado usa su interior; (2) si no,
+    escanea desde el primer `{` con **llaves balanceadas** (respeta strings y escapes) hasta el
+    `}` de cierre — no el ingenuo primer-a-último. Quita trailing commas. Lanza error claro si no
+    hay objeto o si quedó truncado ("Objeto JSON incompleto"). `parseMarketDataJson` lo usa.
+  - **`MAX_TOKENS = 3000`** en `batch.ts` (antes 1024): con los campos acotados el JSON es chico;
+    3000 elimina la truncación que cortaba el JSON a mitad de string (vista en Perú y otras geos).
+  - **Prompt (`prompts/market-data.md`):** exige JSON puro sin preámbulo aunque use web search;
+    campos estructurados (`price_sqm`, `sale_velocity`, `buyer_profile`, `demand_level`) acotados a
+    una frase ~200 char; el detalle va solo en `market_paragraph` (80-100 palabras).
 - **Principio de errores verbatim (app beta personal):**
   - Todos los endpoints del pipeline devuelven `{ error: <mensaje real>, stage: <etapa>, context: <detalle> }`.
   - Los errores fatales (market-data) escriben en `batches.error_message` y avanzan el status a `"error"`.
