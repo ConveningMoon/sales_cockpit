@@ -12,8 +12,8 @@ type Props = {
   initialStatus: BatchStatus;
   leadCount: number;
   errorMessage: string | null;
-  // true si ya hay un job de market data en vuelo (permite "Verificar progreso")
   marketBatchInFlight: boolean;
+  outreachBatchInFlight: boolean;
 };
 
 const POLL_INTERVAL_MS = 5000;
@@ -24,7 +24,7 @@ function statusLabel(s: BatchStatus): string {
     pending:         "Pendiente de clasificación",
     classifying:     "Clasificando leads…",
     fetching_market: "Obteniendo datos de mercado…",
-    generating:      "Listo para generación",
+    generating:      "Listo para generar secuencias",
     done:            "Completo",
     error:           "Error",
   };
@@ -43,13 +43,25 @@ function statusBadgeClass(s: BatchStatus): string {
   return map[s] ?? "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage, marketBatchInFlight }: Props) {
+const gradientBtn =
+  "font-semibold text-primary-foreground disabled:opacity-40 transition-all duration-150 " +
+  "enabled:hover:opacity-90 enabled:hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]";
+
+export function BatchPipeline({
+  batchId,
+  initialStatus,
+  leadCount,
+  errorMessage,
+  marketBatchInFlight,
+  outreachBatchInFlight,
+}: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<BatchStatus>(initialStatus);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
-  // Detalle de error local — se muestra antes de que router.refresh() cargue el de DB
   const [localError, setLocalError] = useState<string | null>(null);
+  const [noMarketDataCount, setNoMarketDataCount] = useState(0);
+  const [generatedCount, setGeneratedCount] = useState(0);
 
   function showError(data: { error?: string; stage?: string; context?: unknown }, fallback: string) {
     const parts = [
@@ -60,7 +72,7 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
     setLocalError(parts);
     toast.error(parts);
     setStatus("error");
-    router.refresh(); // cargar error_message de DB
+    router.refresh();
   }
 
   async function runClassify() {
@@ -87,14 +99,12 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
           return;
         }
 
-        // safeFetch lanza si el body no es JSON; si llegamos aquí con ok=true, data != null
         const d = data!;
         classified += d.classified ?? 0;
         const total = d.total ?? leadCount;
         setProgress(`${classified} / ${total} clasificado${classified !== 1 ? "s" : ""}`);
 
         if (d.errors && d.errors.length > 0) {
-          // Mostrar el primer error con detalle; resumir el resto
           const first = d.errors[0].message;
           const extra = d.errors.length > 1 ? ` (+${d.errors.length - 1} más)` : "";
           toast.warning(`Clasificación parcial: ${first}${extra}`);
@@ -136,7 +146,6 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
     } finally {
       setRunning(false);
     }
-    // runMarketData maneja su propio running/finally — llamarlo fuera del bloque
     await runMarketData();
   }
 
@@ -145,7 +154,6 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
     setLocalError(null);
 
     try {
-      // 1. Submit (idempotente: si ya hay job en vuelo devuelve alreadySubmitted)
       setProgress("Enviando geografías a la cola de Anthropic…");
       const submit = await safeFetch<{
         done?: boolean;
@@ -164,7 +172,6 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
       }
       const sd = submit.data!;
 
-      // Nada que buscar (todo en caché o sin leads A/B) → ya avanzó a generating
       if (sd.done) {
         toast.success("Datos de mercado listos (todo en caché).");
         setStatus("generating");
@@ -177,7 +184,6 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
         toast.success(`${sd.submitted} geografía${sd.submitted !== 1 ? "s" : ""} en cola${sd.cached ? ` (${sd.cached} en caché)` : ""}.`);
       }
 
-      // 2. Poll loop — el batch corre en Anthropic, no en Vercel (sin timeout)
       while (true) {
         await sleep(POLL_INTERVAL_MS);
         const poll = await safeFetch<{
@@ -206,7 +212,6 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
           continue;
         }
 
-        // ended
         if (pd.failed && pd.failed > 0) {
           const first = pd.errors?.[0];
           const detail = first ? ` Primera: "${first.geography}": ${first.detail}` : "";
@@ -229,6 +234,105 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
     }
   }
 
+  async function runGenerate() {
+    setRunning(true);
+    setLocalError(null);
+
+    try {
+      // 1. Submit (idempotente: si ya hay job devuelve alreadySubmitted)
+      setProgress("Enviando secuencias a la cola de Anthropic…");
+      const submit = await safeFetch<{
+        submitted?: number;
+        noMarketDataCount?: number;
+        outreachBatchId?: string;
+        alreadySubmitted?: boolean;
+        done?: boolean;    // true si 0 leads A/B → ya avanzó a done
+        error?: string;
+        stage?: string;
+        context?: unknown;
+      }>(`/api/batches/${batchId}/generate`, { method: "POST" });
+
+      if (!submit.ok) {
+        showError(submit.data ?? {}, "Error al enviar el batch de secuencias.");
+        return;
+      }
+      const sd = submit.data!;
+
+      // Sin leads A/B — ya avanzó directo a done
+      if (sd.done) {
+        toast.success("Sin leads A/B para generar. Pipeline completo.");
+        setStatus("done");
+        setProgress(null);
+        router.refresh();
+        return;
+      }
+
+      const noMd = sd.noMarketDataCount ?? 0;
+      if (noMd > 0) {
+        toast.warning(
+          `${noMd} lead${noMd !== 1 ? "s" : ""} del grupo A se generará${noMd !== 1 ? "n" : ""} sin datos de mercado.`,
+        );
+      }
+      if (sd.submitted) {
+        toast.success(`${sd.submitted} lead${sd.submitted !== 1 ? "s" : ""} enviado${sd.submitted !== 1 ? "s" : ""} a la cola.`);
+      }
+
+      // 2. Poll loop — el batch corre en Anthropic
+      while (true) {
+        await sleep(POLL_INTERVAL_MS);
+        const poll = await safeFetch<{
+          status?: "in_progress" | "ended";
+          done?: boolean;
+          processed?: number;
+          failed?: number;
+          counts?: { succeeded: number; errored: number; expired: number; canceled: number; processing: number };
+          errors?: { leadId: string; detail: string }[];
+          error?: string;
+          stage?: string;
+          context?: unknown;
+        }>(`/api/batches/${batchId}/generate/poll`, { method: "POST" });
+
+        if (!poll.ok) {
+          showError(poll.data ?? {}, "Error al consultar el batch de secuencias.");
+          return;
+        }
+        const pd = poll.data!;
+
+        if (pd.status === "in_progress") {
+          const c = pd.counts;
+          const listas = c ? c.succeeded + c.errored + c.expired + c.canceled : 0;
+          const total = sd.submitted ?? leadCount;
+          setProgress(`Generando secuencias… ${listas} / ${total} listas`);
+          continue;
+        }
+
+        // ended
+        const generated = pd.processed ?? 0;
+        setGeneratedCount(generated);
+        setNoMarketDataCount(noMd);
+
+        if (pd.failed && pd.failed > 0) {
+          const first = pd.errors?.[0];
+          const detail = first ? ` (lead ${first.leadId}: ${first.detail})` : "";
+          toast.warning(`Generación: ${generated} ok, ${pd.failed} con error.${detail}`);
+        } else {
+          toast.success(`${generated} secuencia${generated !== 1 ? "s" : ""} generada${generated !== 1 ? "s" : ""}.`);
+        }
+        setStatus("done");
+        setProgress(null);
+        router.refresh();
+        break;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Error de red en la generación.";
+      setLocalError(msg);
+      toast.error(msg);
+      setStatus("error");
+    } finally {
+      setRunning(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       {/* Estado actual */}
@@ -241,7 +345,7 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
         )}
       </div>
 
-      {/* Error — se muestra el detalle local inmediato o el de DB tras router.refresh() */}
+      {/* Error */}
       {status === "error" && (localError ?? errorMessage) && (
         <p className="text-sm text-rose-400 bg-rose-950/40 border border-rose-900/60 rounded-lg px-4 py-3 whitespace-pre-wrap wrap-break-word">
           {localError ?? errorMessage}
@@ -249,24 +353,23 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
       )}
 
       {/* Acciones por etapa */}
-      <div className="flex flex-wrap gap-3">
-        {(status === "pending") && (
+      <div className="flex flex-wrap gap-3 items-center">
+        {status === "pending" && (
           <Button
             onClick={runClassify}
             disabled={running}
-            className="font-semibold text-primary-foreground disabled:opacity-40 transition-all duration-150
-                       enabled:hover:opacity-90 enabled:hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
+            className={gradientBtn}
             style={!running ? { background: "var(--gradient-brand)" } : undefined}
           >
             {running ? "Clasificando…" : `Clasificar ${leadCount} lead${leadCount !== 1 ? "s" : ""}`}
           </Button>
         )}
 
-        {(status === "classifying" && !running) && (
+        {status === "classifying" && !running && (
           <Button
             onClick={runClassify}
             disabled={running}
-            className="font-semibold text-primary-foreground"
+            className={gradientBtn}
             style={{ background: "var(--gradient-brand)" }}
           >
             Retomar clasificación
@@ -277,8 +380,7 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
           <Button
             onClick={runMarketData}
             disabled={running}
-            className="font-semibold text-primary-foreground disabled:opacity-40 transition-all duration-150
-                       enabled:hover:opacity-90 enabled:hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
+            className={gradientBtn}
             style={!running ? { background: "var(--gradient-brand)" } : undefined}
           >
             {running
@@ -289,28 +391,57 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage,
           </Button>
         )}
 
+        {status === "generating" && (
+          <Button
+            onClick={runGenerate}
+            disabled={running}
+            className={gradientBtn}
+            style={!running ? { background: "var(--gradient-brand)" } : undefined}
+          >
+            {running
+              ? "Generando secuencias…"
+              : outreachBatchInFlight
+                ? "Verificar progreso de generación"
+                : "Generar secuencias"}
+          </Button>
+        )}
+
         {status === "error" && (
           <Button
             onClick={resetAndRetryMarket}
             disabled={running}
-            className="font-semibold text-primary-foreground disabled:opacity-40 transition-all duration-150
-                       enabled:hover:opacity-90 enabled:hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
+            className={gradientBtn}
             style={!running ? { background: "var(--gradient-brand)" } : undefined}
           >
             {running ? "Reintentando mercado…" : "Reintentar datos de mercado"}
           </Button>
         )}
 
-        {status === "generating" && (
-          <p className="text-sm text-muted-foreground italic">
-            Listo para generación de secuencias — disponible en Push B.
-          </p>
-        )}
-
         {status === "done" && (
-          <p className="text-sm text-emerald-400">
-            Pipeline completo. El export CSV estará disponible en Push B.
-          </p>
+          <>
+            <a
+              href={`/api/batches/${batchId}/export`}
+              download
+              className={
+                "inline-flex items-center justify-center h-9 px-4 rounded-md text-sm " +
+                "font-semibold text-primary-foreground transition-all duration-150 " +
+                "hover:opacity-90 hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
+              }
+              style={{ background: "var(--gradient-brand)" }}
+            >
+              Exportar CSV para LH2
+            </a>
+            {generatedCount > 0 && (
+              <span className="text-xs text-emerald-400">
+                {generatedCount} lead{generatedCount !== 1 ? "s" : ""} con secuencias
+                {noMarketDataCount > 0 && (
+                  <span className="text-amber-400 ml-1">
+                    ({noMarketDataCount} grupo A sin datos de mercado)
+                  </span>
+                )}
+              </span>
+            )}
+          </>
         )}
       </div>
     </div>
