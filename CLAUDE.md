@@ -634,6 +634,31 @@ logica: adaptarla.
 - **`prompts/outreach-sequence.md`**: fuente de verdad del prompt de outreach. El sistema
   distingue A/B y maneja el caso de contexto de mercado ausente (no inventa datos).
 
+**Modulo de tracking + costo por lead/campana completado (2026-06-21).** Campana = batch.
+- **Atribucion de costo a lead — CRITICO:** vive en la **columna `ai_usage.lead_id`**, NO en
+  `context->>'lead_id'` (verificado: 0 filas tienen lead_id en context). Toda query de costo por
+  lead usa `WHERE lead_id = <lead>`. Las 3 rutas atribuibles ya loguean `lead_id`: clasificacion
+  (`classify`), secuencia (`generate/poll`), borrador del cockpit (`draft.ts`). El dato de
+  mercado es por geografia/compartido (`context.batch_id`, sin lead_id) → **excluido** del costo
+  por lead y del costo de campana.
+- **Migracion 007** (`supabase/migrations/007_lead_tracking.sql`): `leads.closing_reason text` +
+  `leads.answer_quality text`. Nullable; validacion contra listas cerradas en el API (mismo
+  patron que `lead_status`), no en DB. Se guardan **claves estables**; las etiquetas es-LA viven
+  en `ui-helpers.ts` (`CLOSING_REASONS`, `ANSWER_QUALITIES`, `closingReasonLabel`,
+  `answerQualityLabel`, `answerQualityBadgeClass`, `taskTypeLabel`).
+- **`PATCH /api/leads/[id]`**: acepta `lead_status`, `closing_reason` y `answer_quality` de forma
+  opcional e independiente (`"campo" in body`); valida claves; `null` limpia el campo.
+- **Ficha (`LeadTracking`, `LeadCost`):** `LeadTracking` (client) = selects de calidad de
+  respuesta + razon de cierre (update optimista + revert + `router.refresh()`; `""` → null).
+  `LeadCost` (server) = "Costo de IA: $X.XXXX" + desglose por etapa (`task_type`). `page.tsx`
+  agrega `ai_usage` por `lead_id`.
+- **Dashboard (`BatchAnalytics` en `/batches/[id]`):** server-rendered. Costo total + promedio
+  por lead, profundidad media de conversacion (total `messages` / nº leads), embudo de estado
+  (estados presentes en orden canonico), distribucion de calidad de respuesta y razones de cierre
+  (conteo + %). Conteo total + por `cs_group` siguen en la tarjeta de info del batch.
+- **Fuera del MVP (decision de Dylan):** reply-rate por tipo de mensaje (`batches.lh2_stats`
+  jsonb) — es doble-captura manual desde LH2; se agrega despues sin retrabajo.
+
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
@@ -665,6 +690,30 @@ logica: adaptarla.
    - **Push B (Fases 4-5):** migracion 006 (outreach_batch_id), endpoints generate + poll +
      export CSV. Batch API async (Sonnet, sin web search). Degradacion visible para A sin mercado.
      **COMPLETADO (2026-06-21).**
+7. **Tracking + analitica de campana:** migracion 007 (closing_reason, answer_quality), costo por
+   lead/campana (via columna `ai_usage.lead_id`), dashboard en `/batches/[id]`. **COMPLETADO
+   (2026-06-21).**
+
+---
+
+## 13. Decisiones de producto (basadas en datos de campanas reales)
+
+> Etapas EN COLA derivadas del analisis de 3 campanas reales. Pendientes de ejecutar.
+> No implementar sin confirmacion de Dylan (Fase 0 primero).
+
+- **a) Eliminar el stage de market-data del batch.** Las 3 campanas reales prueban que el dato
+  de mercado en frio rinde **peor** (Wave 7: peor en respuestas positivas y en profundidad de
+  conversacion). El costo de market-data (Sonnet + web search, ~$0.06/geo) no se justifica.
+  Plan tentativo: el pipeline batch saltaria `fetching_market` y generaria secuencias sin
+  inyectar `market_paragraph` (el prompt ya maneja contexto vacio). **Pendiente de ejecutar.**
+- **b) Corregir el FU1 del prompt de secuencia.** El FU1 actual (pivote a insight, anclado en
+  Wave 6) saco **1.2%** de respuesta; el que funciona es la **re-pregunta simple** (Wave 5,
+  **12.9%**). Plan: reescribir la intencion de `fu1` en `prompts/outreach-sequence.md` hacia la
+  re-pregunta. **Pendiente.**
+- **c) Enriquecimiento opt-in de market data en el borrador del cockpit.** En vez de inyectar
+  mercado siempre, el modelo **senala** cuando un dato reforzaria la respuesta; el humano
+  **aprueba con un clic** una busqueda web acotada. Mantiene el costo bajo control y solo usa
+  mercado cuando suma. **Pendiente.**
 
 ---
 
