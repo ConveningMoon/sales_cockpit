@@ -92,3 +92,16 @@ export function answerQualityBadgeClass(key: string): string {
   };
   return map[key] ?? "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
+
+// Etiqueta de etapa para el desglose de costo de IA por lead.
+export function taskTypeLabel(taskType: string): string {
+  const map: Record<string, string> = {
+    clasificacion:      "Clasificación",
+    outreach:           "Secuencia",
+    draft:              "Borradores",
+    parse_conversation: "Parser de conversación",
+    market_data:        "Datos de mercado",
+    other:              "Otros",
+  };
+  return map[taskType] ?? taskType;
+}

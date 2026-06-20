@@ -15,12 +15,31 @@ export default async function FichaPage({ params }: PageProps) {
   const { data: lead } = await supabase
     .from("leads")
     .select(
-      "id, full_name, headline, current_position, current_company, location_name, cs_city, cs_country, cs_group, summary, website, profile_url, lead_status, raw_profile"
+      "id, full_name, headline, current_position, current_company, location_name, cs_city, cs_country, cs_group, summary, website, profile_url, lead_status, closing_reason, answer_quality, raw_profile"
     )
     .eq("id", leadId)
     .maybeSingle();
 
   if (!lead) notFound();
+
+  // Costo de IA atribuido a este lead (suma por task_type). El dato de mercado
+  // es por geografía/compartido → no lleva lead_id → no entra acá.
+  const { data: usageRows } = await supabase
+    .from("ai_usage")
+    .select("task_type, cost_usd")
+    .eq("lead_id", leadId);
+
+  const costMap = new Map<string, number>();
+  let costTotal = 0;
+  for (const row of usageRows ?? []) {
+    const cost = (row.cost_usd as number | null) ?? 0;
+    const tt = row.task_type as string;
+    costMap.set(tt, (costMap.get(tt) ?? 0) + cost);
+    costTotal += cost;
+  }
+  const costByStage = [...costMap.entries()]
+    .map(([taskType, cost]) => ({ taskType, cost }))
+    .sort((a, b) => b.cost - a.cost);
 
   const { data: messages } = await supabase
     .from("messages")
@@ -89,6 +108,10 @@ export default async function FichaPage({ params }: PageProps) {
               website={lead.website}
               profileUrl={lead.profile_url ?? null}
               leadStatus={lead.lead_status as string}
+              closingReason={(lead.closing_reason as string | null) ?? null}
+              answerQuality={(lead.answer_quality as string | null) ?? null}
+              costTotal={costTotal}
+              costByStage={costByStage}
             />
           </div>
 

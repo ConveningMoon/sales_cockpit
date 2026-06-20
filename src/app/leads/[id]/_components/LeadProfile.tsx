@@ -1,6 +1,8 @@
 import { Separator } from "@/components/ui/separator";
 import { groupBadgeClass } from "@/lib/ui-helpers";
 import { StatusSelector } from "./StatusSelector";
+import { LeadTracking } from "./LeadTracking";
+import { LeadCost } from "./LeadCost";
 
 type Props = {
   leadId: string;
@@ -16,6 +18,10 @@ type Props = {
   website: string | null;
   profileUrl: string | null;
   leadStatus: string;
+  closingReason: string | null;
+  answerQuality: string | null;
+  costTotal: number;
+  costByStage: { taskType: string; cost: number }[];
 };
 
 export function LeadProfile({
@@ -32,6 +38,10 @@ export function LeadProfile({
   website,
   profileUrl,
   leadStatus,
+  closingReason,
+  answerQuality,
+  costTotal,
+  costByStage,
 }: Props) {
   const location = locationName ?? [csCity, csCountry].filter(Boolean).join(", ");
 
@@ -117,6 +127,20 @@ export function LeadProfile({
           </div>
         )}
       </dl>
+
+      <Separator className="opacity-40" />
+
+      {/* Tracking manual (cero tokens) */}
+      <LeadTracking
+        leadId={leadId}
+        currentClosingReason={closingReason}
+        currentAnswerQuality={answerQuality}
+      />
+
+      <Separator className="opacity-40" />
+
+      {/* Costo de IA atribuido a este lead */}
+      <LeadCost total={costTotal} byStage={costByStage} />
 
       {/* Summary de LinkedIn */}
       {summary && (
