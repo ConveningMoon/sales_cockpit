@@ -132,6 +132,8 @@ export interface Batch {
   lead_count: number;
   status: BatchStatus;
   error_message: string | null;
+  market_batch_id: string | null;
+  market_batch_geos: { country: string; city: string | null }[] | null;
   imported_at: string;
 }
 
