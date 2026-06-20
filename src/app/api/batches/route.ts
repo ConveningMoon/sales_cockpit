@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
-import { parseLh2LeadRow } from "@/lib/lh/parser";
+import { parseLh2LeadRow, filterLh2Rows } from "@/lib/lh/parser";
 import { upsertLead } from "@/lib/leads/ingest";
 
 export const maxDuration = 60;
@@ -47,10 +47,11 @@ export async function POST(req: NextRequest) {
   let created = 0;
   let updated = 0;
 
-  // 2. Importar leads vinculados al batch
-  for (let i = 0; i < rows.length; i++) {
+  // 2. Importar leads vinculados al batch — filtrar filas sin lh_id (relleno vacío de LH2)
+  const validRows = filterLh2Rows(rows);
+  for (let i = 0; i < validRows.length; i++) {
     try {
-      const leadData = parseLh2LeadRow(rows[i]);
+      const leadData = parseLh2LeadRow(validRows[i]);
       const result = await upsertLead(supabase, leadData, "nuevo", batchId);
       leadIds.push(result.id);
       if (result.lead_status === "nuevo") created++;

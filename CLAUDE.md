@@ -510,6 +510,14 @@ logica: adaptarla.
     fetching_market → generating (mensaje "Push B pendiente") → done. Cada etapa tiene boton
     propio; "Retomar" si el status quedó en classifying sin running.
   - Bandeja: link "Batches" en el header junto a "+ Nuevo lead".
+- **Parseo CSV de LH2 — contrato canonico:**
+  - Delimitador: `;` (LH2 siempre exporta con punto y coma). PapaParse con `delimiter: ";"` explícito.
+  - `skipEmptyLines: "greedy"` — descarta filas donde todos los campos son vacíos/espacios.
+  - `filterLh2Rows()` en `src/lib/lh/parser.ts` — segunda línea de defensa: descarta filas donde
+    `lh_id` es vacío. Función pura sin dependencias de servidor → usable en client y server.
+  - Preview, conteo e import usan el mismo set filtrado: lo que se muestra == lo que se clasifica.
+  - Bytes no-UTF8 en el campo `note` de LH2 son reemplazados por U+FFFD por el FileReader; no
+    bloquean el parseo — solo se aborta si el set filtrado queda vacío.
 
 **Proximo paso: Push B — generacion de secuencias via Batch API + export LH2 CSV.**
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git

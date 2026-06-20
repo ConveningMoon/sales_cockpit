@@ -33,6 +33,14 @@ export interface ParsedLh2Webhook {
   messages: Lh2MessageData[];
 }
 
+// Descarta filas sin lh_id real (filas vacías de relleno que LH2 agrega al final del CSV).
+// Función pura — sin dependencias de servidor; usable en componentes client y en API routes.
+export function filterLh2Rows(
+  rows: Record<string, string>[],
+): Record<string, string>[] {
+  return rows.filter((r) => (r.lh_id ?? "").trim() !== "");
+}
+
 // Extrae solo los datos de perfil del lead desde un row de LH2 (webhook o CSV).
 // No requiere los campos de mensajes — apto para importación de CSV de prospección.
 export function parseLh2LeadRow(body: Record<string, unknown>): Lh2LeadData {

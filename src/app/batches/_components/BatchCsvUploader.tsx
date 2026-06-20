@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Papa from "papaparse";
+import { filterLh2Rows } from "@/lib/lh/parser";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,15 +29,23 @@ export function BatchCsvUploader() {
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       const result = Papa.parse<Record<string, string>>(text, {
+        delimiter: ";",         // LH2 exporta siempre con ; como separador
         header: true,
-        skipEmptyLines: true,
+        skipEmptyLines: "greedy", // descarta filas donde todos los campos son vacíos/espacios
       });
-      if (result.errors.length > 0) {
-        toast.error(`El CSV tiene errores: ${result.errors[0].message}`);
+      // Solo bloquear si no hay datos parseables; errores de campo (ej. bytes no-UTF8
+      // en la columna "note" de LH2) no impiden importar el resto de las filas.
+      const filtered = filterLh2Rows(result.data);
+      if (filtered.length === 0) {
+        toast.error(
+          result.errors.length > 0
+            ? `No se encontraron leads válidos. Error: ${result.errors[0].message}`
+            : "No se encontraron leads válidos en el archivo.",
+        );
         return;
       }
-      setRows(result.data);
-      setRowCount(result.data.length);
+      setRows(filtered);
+      setRowCount(filtered.length);
       // Pre-rellenar nombre del batch con el nombre del archivo
       if (!batchName) {
         setBatchName(file.name.replace(/\.csv$/i, ""));
