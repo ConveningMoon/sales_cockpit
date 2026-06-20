@@ -42,6 +42,8 @@ export interface Lead {
   cs_city: string | null;
   cs_country: string | null;
   lead_status: LeadStatus;
+  closing_reason: string | null;
+  answer_quality: string | null;
   score: number | null;
   batch_id: string | null;
   notes: string | null;

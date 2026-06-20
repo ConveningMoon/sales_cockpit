@@ -57,6 +57,8 @@ export async function POST(req: NextRequest) {
     cs_country:
       typeof b.cs_country === "string" ? b.cs_country.trim() || null : null,
     lead_status: "nuevo",
+    closing_reason: null,
+    answer_quality: null,
     score: null,
     batch_id: null,
     notes: null,
