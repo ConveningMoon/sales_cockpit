@@ -34,6 +34,7 @@ export async function GET(
 
   // Cargar leads A/B con sus secuencias de outreach
   const { data: leads, error: leadsError } = await (supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .from("leads") as any)
     .select(
       "lh_id, profile_url, full_name, cs_group, cs_city, cs_country, outreach_sequence(kind, body)",
@@ -52,6 +53,7 @@ export async function GET(
   const header = "lh_id;profile_url;full_name;cs_group;cs_city;cs_country;cs_msg_opener;cs_fu1;cs_fu2";
   const rows = [header];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const lead of (leads ?? []) as any[]) {
     const seqs: { kind: string; body: string }[] = lead.outreach_sequence ?? [];
     const cold = seqs.find((s) => s.kind === "cold")?.body ?? "";
