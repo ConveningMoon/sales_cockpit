@@ -14,7 +14,7 @@ export default async function BatchPage({ params }: PageProps) {
 
   const { data: batch } = await supabase
     .from("batches")
-    .select("id, name, source, lead_count, status, error_message, imported_at")
+    .select("id, name, source, lead_count, status, error_message, market_batch_id, imported_at")
     .eq("id", batchId)
     .maybeSingle();
 
@@ -97,6 +97,7 @@ export default async function BatchPage({ params }: PageProps) {
             initialStatus={batch.status as BatchStatus}
             leadCount={batch.lead_count as number}
             errorMessage={(batch.error_message as string | null) ?? null}
+            marketBatchInFlight={Boolean(batch.market_batch_id)}
           />
         </div>
       </main>

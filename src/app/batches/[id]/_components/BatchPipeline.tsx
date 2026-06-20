@@ -12,7 +12,12 @@ type Props = {
   initialStatus: BatchStatus;
   leadCount: number;
   errorMessage: string | null;
+  // true si ya hay un job de market data en vuelo (permite "Verificar progreso")
+  marketBatchInFlight: boolean;
 };
+
+const POLL_INTERVAL_MS = 5000;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function statusLabel(s: BatchStatus): string {
   const map: Record<BatchStatus, string> = {
@@ -38,7 +43,7 @@ function statusBadgeClass(s: BatchStatus): string {
   return map[s] ?? "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
-export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage }: Props) {
+export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage, marketBatchInFlight }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<BatchStatus>(initialStatus);
   const [running, setRunning] = useState(false);
@@ -117,40 +122,82 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
     setLocalError(null);
 
     try {
+      // 1. Submit (idempotente: si ya hay job en vuelo devuelve alreadySubmitted)
+      setProgress("Enviando geografías a la cola de Anthropic…");
+      const submit = await safeFetch<{
+        done?: boolean;
+        submitted?: number;
+        cached?: number;
+        total?: number;
+        alreadySubmitted?: boolean;
+        error?: string;
+        stage?: string;
+        context?: unknown;
+      }>(`/api/batches/${batchId}/market-data/submit`, { method: "POST" });
+
+      if (!submit.ok) {
+        showError(submit.data ?? {}, "Error al enviar el batch de market data.");
+        return;
+      }
+      const sd = submit.data!;
+
+      // Nada que buscar (todo en caché o sin leads A/B) → ya avanzó a generating
+      if (sd.done) {
+        toast.success("Datos de mercado listos (todo en caché).");
+        setStatus("generating");
+        setProgress(null);
+        router.refresh();
+        return;
+      }
+
+      if (sd.submitted) {
+        toast.success(`${sd.submitted} geografía${sd.submitted !== 1 ? "s" : ""} en cola${sd.cached ? ` (${sd.cached} en caché)` : ""}.`);
+      }
+
+      // 2. Poll loop — el batch corre en Anthropic, no en Vercel (sin timeout)
       while (true) {
-        const { ok, data } = await safeFetch<{
+        await sleep(POLL_INTERVAL_MS);
+        const poll = await safeFetch<{
+          status?: "in_progress" | "ended";
           done?: boolean;
+          processed?: number;
+          failed?: number;
           total?: number;
-          remaining?: number;
-          country?: string | null;
-          city?: string | null;
+          counts?: { succeeded: number; errored: number; expired: number; canceled: number; processing: number };
+          errors?: { geography: string; detail: string }[];
           error?: string;
           stage?: string;
           context?: unknown;
-        }>(`/api/batches/${batchId}/market-data`, { method: "POST" });
+        }>(`/api/batches/${batchId}/market-data/poll`, { method: "POST" });
 
-        if (!ok) {
-          showError(data ?? {}, "Error al obtener datos de mercado.");
+        if (!poll.ok) {
+          showError(poll.data ?? {}, "Error al consultar el batch de market data.");
           return;
         }
+        const pd = poll.data!;
 
-        // safeFetch lanza si el body no es JSON; si llegamos aquí con ok=true, data != null
-        const d = data!;
-        if (d.country) {
-          const geo = [d.city, d.country].filter(Boolean).join(", ");
-          const done = (d.total ?? 0) - (d.remaining ?? 0);
-          setProgress(`Buscando mercado: ${geo} — ${done} / ${d.total ?? "?"}`);
+        if (pd.status === "in_progress") {
+          const c = pd.counts;
+          const listas = c ? c.succeeded + c.errored + c.expired + c.canceled : 0;
+          setProgress(`Procesando mercado (batch async)… ${listas} / ${pd.total ?? "?"} listas`);
+          continue;
         }
 
-        if (d.done) break;
+        // ended
+        if (pd.failed && pd.failed > 0) {
+          const first = pd.errors?.[0];
+          const detail = first ? ` Primera: "${first.geography}": ${first.detail}` : "";
+          toast.warning(`Mercado: ${pd.processed} ok, ${pd.failed} con error.${detail}`);
+        } else {
+          toast.success(`Datos de mercado obtenidos (${pd.processed}).`);
+        }
+        setStatus("generating");
+        setProgress(null);
+        router.refresh();
+        break;
       }
-
-      toast.success("Datos de mercado obtenidos.");
-      setStatus("generating");
-      setProgress(null);
-      router.refresh();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Error de red al obtener datos de mercado.";
+      const msg = err instanceof Error ? err.message : "Error de red en market data.";
       setLocalError(msg);
       toast.error(msg);
       setStatus("error");
@@ -211,7 +258,11 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
                        enabled:hover:opacity-90 enabled:hover:shadow-[0_0_14px_hsl(248_82%_67%/0.35)]"
             style={!running ? { background: "var(--gradient-brand)" } : undefined}
           >
-            {running ? "Obteniendo mercado…" : "Obtener datos de mercado"}
+            {running
+              ? "Procesando mercado…"
+              : marketBatchInFlight
+                ? "Verificar progreso del mercado"
+                : "Obtener datos de mercado"}
           </Button>
         )}
 

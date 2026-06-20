@@ -536,15 +536,33 @@ logica: adaptarla.
   - `[AI] OK | <task_type> | <model> | <ms>ms | in=N out=N searches=N cost=$N`
   - Leer logs de runtime via Vercel MCP: `mcp__vercel__getDeploymentEvents(deploymentId)`.
     Necesita el `projectId` o `slug` del proyecto Vercel.
-- **Market data — arquitectura anti-timeout:**
-  - El endpoint procesa UNA geografía por llamada. El cliente hace loop hasta `done: true`.
-  - `web_search_20260209` con `max_uses: 4` (constante `WEB_SEARCH_MAX_USES` en el endpoint).
-    Limita búsquedas por geografía → acota latencia < 60s y costo por request.
-  - `webSearchMaxUses?: number` propagado en `AICallOptions` → `ProviderCallParams` → provider.
-  - Pasada única de N queries para encontrar target + contar `remaining` (antes eran 2 pasadas × N).
-  - En error: escribe `status="error"` + `error_message` verbatim en `batches` y devuelve
-    `{ error, stage, context }`. Nunca traga el error en un mensaje genérico.
-  - Progreso en la UI: "Buscando mercado: Madrid, España — 2/4" — sin "(caché)" ambiguo.
+- **Market data — arquitectura ASYNC via Anthropic Batch API (migración 005):**
+  - **Por qué:** una geografía con Sonnet + web search tarda ~60s y el modelo síncrono mataba
+    la función de Vercel con `FUNCTION_INVOCATION_TIMEOUT` (límite Hobby = 60s). Diagnóstico
+    leído en los runtime logs de Vercel (no adivinado). La Batch API procesa el job FUERA del
+    request de Vercel → **ninguna función espera al modelo → seguimos en Hobby sin pagar Pro.**
+  - **Web search SÍ funciona en la Batch API** (verificado en docs Anthropic: "all server tools
+    work in batch requests"). Se throttlea por org y reintenta automáticamente.
+  - **Schema:** `batches.market_batch_id` (id del job Anthropic, null = sin job) +
+    `batches.market_batch_geos` jsonb (lista ordenada `[{country, city}]` que mapea
+    `custom_id "geo_<i>"` → geografía al recuperar resultados).
+  - **`src/lib/ai/batch.ts`:** wrappers del SDK — `submitMarketDataBatch()` (una request Messages
+    por geo, Sonnet + `web_search` max_uses 4), `retrieveBatchProgress()`, `iterateMarketResults()`
+    (async generator sobre el JSONL de resultados). `MARKET_DATA_MODEL = "claude-sonnet-4-6"`.
+  - **`src/lib/ai/market-data.ts`:** helpers compartidos — parse JSON, build user message,
+    `getUniqueGeos`, `isGeoCached`, `upsertMarketData`, `markBatchError`, `advanceToGenerating`.
+  - **`POST .../market-data/submit`:** filtra geos cacheadas; si 0 → avanza a `generating`; si hay,
+    envía UN batch a Anthropic, guarda `market_batch_id` + `market_batch_geos`. Idempotente
+    (si ya hay job → `alreadySubmitted`). Rápido → `maxDuration=60` cómodo en Hobby.
+  - **`POST .../market-data/poll`:** `retrieveBatchProgress`; `in_progress` → devuelve counts;
+    `ended` → itera resultados, `succeeded` → parse + upsert + log `ai_usage` (status='ok', tokens
+    reales, costo a 50% batch); `errored`/`expired`/`pause_turn` → log status='error' verbatim +
+    colecta. Avanza a `generating` si ≥1 éxito (fallos parciales se reportan), o `error` si 0.
+    Limpia `market_batch_id`/`geos`. El viejo `market-data/route.ts` síncrono fue **eliminado**.
+  - **Cliente (`BatchPipeline`):** `runMarketData` = submit una vez → poll loop cada 5s con
+    `safeFetch` hasta `ended`. Progreso "Procesando mercado (batch async)… N/total". Resumible:
+    si `market_batch_id` existe al recargar, el botón pasa a "Verificar progreso del mercado".
+  - Edge `pause_turn`: la geo se marca como error (reintento via re-submit, que salta cacheadas).
 - **Principio de errores verbatim (app beta personal):**
   - Todos los endpoints del pipeline devuelven `{ error: <mensaje real>, stage: <etapa>, context: <detalle> }`.
   - Los errores fatales (market-data) escriben en `batches.error_message` y avanzan el status a `"error"`.
