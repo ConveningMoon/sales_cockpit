@@ -510,6 +510,32 @@ logica: adaptarla.
     fetching_market → generating (mensaje "Push B pendiente") → done. Cada etapa tiene boton
     propio; "Retomar" si el status quedó en classifying sin running.
   - Bandeja: link "Batches" en el header junto a "+ Nuevo lead".
+- **`safeFetch` helper (`src/lib/http/safeFetch.ts`):**
+  - Lee la respuesta como texto, luego `JSON.parse` en try/catch.
+  - Si no es JSON (ej. página de error 504 de Vercel/gateway), lanza con
+    `"HTTP 504 Gateway Timeout — respuesta no-JSON: <cuerpo>"` — nunca "Unexpected token 'A'".
+  - Para errores HTTP con body JSON válido (nuestros propios 500/409), devuelve `ok:false` con
+    `data` parseado para acceder a `{error, stage, context}`.
+  - Todos los loops del pipeline en `BatchPipeline` usan `safeFetch` en lugar de `res.json()`.
+- **`ai_usage` como log de operaciones (migración 004):**
+  - Nuevas columnas: `status text DEFAULT 'ok' CHECK (status IN ('ok','error'))`,
+    `error_detail text`, `duration_ms integer`, `context jsonb`.
+  - `callAI()` en `router.ts` loguea TODOS los intentos — exitosos (status='ok') y fallidos
+    (status='error') — con `error_detail` (texto exacto del upstream), `duration_ms` y `context`.
+  - En el path de error: `console.error("[AI] FALLO | ...")` con etapa, modelo y contexto;
+    luego re-lanza el error para que el caller lo maneje.
+  - `context` incluye `{ batch_id, country, city }` en market-data y `{ batch_id }` en classify.
+  - Para diagnosticar un fallo: filtrar `ai_usage` por `status='error'` — el campo `error_detail`
+    tiene el mensaje exacto del upstream de Anthropic o de web search.
+- **Logs estructurados en runtime (Vercel):**
+  - `[market-data] batch=<id> geo="<ciudad, país>" pending=N — llamando Sonnet+webSearch`
+  - `[market-data] batch=<id> geo="..." — OK upsert en market_data, remaining=N`
+  - `[market-data] batch=<id> geo="..." — ERROR: <mensaje completo>`
+  - `[classify] batch=<id> — clasificando N leads`
+  - `[AI] FALLO | <task_type> | <model> | <ms>ms` (+ error + context)
+  - `[AI] OK | <task_type> | <model> | <ms>ms | in=N out=N searches=N cost=$N`
+  - Leer logs de runtime via Vercel MCP: `mcp__vercel__getDeploymentEvents(deploymentId)`.
+    Necesita el `projectId` o `slug` del proyecto Vercel.
 - **Market data — arquitectura anti-timeout:**
   - El endpoint procesa UNA geografía por llamada. El cliente hace loop hasta `done: true`.
   - `web_search_20260209` con `max_uses: 4` (constante `WEB_SEARCH_MAX_USES` en el endpoint).
