@@ -590,7 +590,41 @@ logica: adaptarla.
   - Bytes no-UTF8 en el campo `note` de LH2 son reemplazados por U+FFFD por el FileReader; no
     bloquean el parseo — solo se aborta si el set filtrado queda vacío.
 
-**Proximo paso: Push B — generacion de secuencias via Batch API + export LH2 CSV.**
+**Slice 6 Push B completado (2026-06-21).** Generacion de secuencias via Batch API + export CSV:
+- **Migracion 006** (`supabase/migrations/006_outreach_batch.sql`):
+  - `batches.outreach_batch_id text` — id del job Anthropic de outreach (null = sin job).
+  - custom_id = `"lead_<uuid>"` — no necesita tabla posicional (a diferencia de geos).
+- **`src/lib/ai/batch.ts`**: `submitOutreachBatch()` (Sonnet 4.6, 2000 tokens, sin web search,
+  cache_control ephemeral en system) + `iterateOutreachResults()` (AsyncGenerator<OutreachResult>,
+  leadId extraido directo del custom_id).
+- **`src/lib/ai/prompts.ts`**: `getOutreachSequencePrompt()` lazy cacheado +
+  `buildOutreachUserMessage(template, lead, marketParagraph)` — inyecta todos los campos del
+  perfil + market_paragraph (vacio si no hay dato para la geo).
+- **`src/lib/ai/market-data.ts`**: `getMarketParagraph(supabase, {country, city})` — mismo
+  criterio de match que `isGeoCached` (city exacta o null=pais); `found=false` si no hay dato.
+- **`POST /api/batches/[id]/generate`**: carga leads A/B del batch, deduplica geos para
+  minimizar queries, resuelve market_paragraph por geo, llama `submitOutreachBatch`, guarda
+  `outreach_batch_id`. Idempotente (si ya hay job -> `alreadySubmitted`). Devuelve
+  `{ submitted, noMarketDataCount }`. Leads A sin dato de mercado: se generan igual con
+  market_paragraph vacio; el prompt ya maneja el caso sin inventar datos.
+- **`POST /api/batches/[id]/generate/poll`**: `retrieveBatchProgress` -> si ended, itera JSONL.
+  Por lead: `parseOutreachJson` (usa `extractJsonObject`) -> upsert 3 filas en `outreach_sequence`
+  (onConflict lead_id,kind). `recordAiUsage` con `context.market_data: bool` (false = grupo A sin
+  dato de mercado). >= 1 exito -> status `done` + limpia `outreach_batch_id`. 0 exitos -> error.
+- **`GET /api/batches/[id]/export`**: JOIN leads A/B con outreach_sequence (kind=cold/fu1/fu2)
+  via select("..., outreach_sequence(kind, body)"). CSV RFC 4180 con delimitador ";". Columnas:
+  `lh_id;profile_url;full_name;cs_group;cs_city;cs_country;cs_msg_opener;cs_fu1;cs_fu2`.
+  Content-Disposition: attachment.
+- **`BatchPipeline.tsx`**: estado `generating` -> boton "Generar secuencias" (o "Verificar
+  progreso" si outreachBatchInFlight). Loop poll 5s hasta ended. Toast de advertencia si leads A
+  sin datos de mercado. Estado `done`: enlace "Exportar CSV para LH2" + contador de leads generados
+  con aviso "(N grupo A sin datos de mercado)" si aplica — degradacion visible, no silenciosa.
+- **`page.tsx`**: selecciona `outreach_batch_id`, pasa `outreachBatchInFlight` al pipeline.
+- **Degradacion visible (requisito critico):** leads A sin `market_data` se generan sin omitir.
+  El conteo exacto se muestra en la UI tras la generacion y en `ai_usage.context.market_data`.
+- **`prompts/outreach-sequence.md`**: fuente de verdad del prompt de outreach. El sistema
+  distingue A/B y maneja el caso de contexto de mercado ausente (no inventa datos).
+
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
@@ -619,9 +653,9 @@ logica: adaptarla.
 6. **Pipeline batch:**
    - **Push A (Fases 1-3):** migracion 003, endpoints classify + market-data (chunked, cache
      30d), UI `/batches/*` con `BatchPipeline`. **COMPLETADO (2026-06-20).**
-   - **Push B (Fase 4-5, pendiente):** generacion de secuencias via Batch API (Sonnet) +
-     export CSV LH2 con columnas `lh_id, profile_url, full_name, cs_group, cs_city, cs_country,
-     cs_msg_opener, cs_fu1, cs_fu2`. Requiere `prompts/outreach-sequence.md` de Dylan.
+   - **Push B (Fases 4-5):** migracion 006 (outreach_batch_id), endpoints generate + poll +
+     export CSV. Batch API async (Sonnet, sin web search). Degradacion visible para A sin mercado.
+     **COMPLETADO (2026-06-21).**
 
 ---
 
