@@ -6,6 +6,8 @@ import Anthropic from "@anthropic-ai/sdk";
 // ---------------------------------------------------------------------------
 
 export const MARKET_DATA_MODEL = "claude-sonnet-4-6";
+export const OUTREACH_MODEL = "claude-sonnet-4-6";
+const OUTREACH_MAX_TOKENS = 2000;
 const WEB_SEARCH_MAX_USES = 4;
 // Con los campos acotados el JSON es chico; 3000 da margen de sobra y elimina la
 // truncación que cortaba el JSON a mitad de string (vista en Perú y otras geos).
@@ -97,6 +99,94 @@ export interface GeoResult {
   webSearchRequests: number;
   errorDetail?: string;   // si no ok
 }
+
+// ---------------------------------------------------------------------------
+// Outreach sequences
+// ---------------------------------------------------------------------------
+
+export interface OutreachLeadInput {
+  leadId: string;
+  userMessage: string;
+}
+
+// custom_id = "lead_<uuid>" — permite extraer el lead_id directo sin tabla posicional.
+export async function submitOutreachBatch(params: {
+  leads: OutreachLeadInput[];
+  system: string;
+}): Promise<string> {
+  const client = getClient();
+
+  const requests = params.leads.map(({ leadId, userMessage }) => ({
+    custom_id: `lead_${leadId}`,
+    params: {
+      model: OUTREACH_MODEL,
+      max_tokens: OUTREACH_MAX_TOKENS,
+      system: [
+        { type: "text" as const, text: params.system, cache_control: { type: "ephemeral" as const } },
+      ],
+      messages: [{ role: "user" as const, content: userMessage }],
+    },
+  }));
+
+  const batch = await client.messages.batches.create({ requests });
+  return batch.id;
+}
+
+export interface OutreachResult {
+  leadId: string;
+  ok: boolean;
+  content?: string;
+  stopReason?: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  errorDetail?: string;
+}
+
+// Itera los resultados de un batch de outreach (JSONL). El leadId se extrae del custom_id.
+export async function* iterateOutreachResults(batchId: string): AsyncGenerator<OutreachResult> {
+  const client = getClient();
+  const decoder = await client.messages.batches.results(batchId);
+
+  for await (const entry of decoder) {
+    const leadId = entry.custom_id.replace(/^lead_/, "");
+    const r = entry.result;
+
+    if (r.type === "succeeded") {
+      const msg = r.message;
+      const content = msg.content
+        .filter((b): b is Anthropic.TextBlock => b.type === "text")
+        .map((b) => b.text)
+        .join("");
+      const usage = msg.usage as Anthropic.Usage & { cache_read_input_tokens?: number };
+      yield {
+        leadId,
+        ok: true,
+        content,
+        stopReason: msg.stop_reason,
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        cachedTokens: usage.cache_read_input_tokens ?? 0,
+      };
+    } else if (r.type === "errored") {
+      yield {
+        leadId, ok: false,
+        inputTokens: 0, outputTokens: 0, cachedTokens: 0,
+        errorDetail: `Error de Anthropic: ${JSON.stringify(r.error)}`,
+      };
+    } else {
+      yield {
+        leadId, ok: false,
+        inputTokens: 0, outputTokens: 0, cachedTokens: 0,
+        errorDetail: `Resultado "${r.type}" (el lead no se procesó).`,
+      };
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Market data results (iteración genérica del JSONL)
+// ---------------------------------------------------------------------------
 
 // Itera los resultados del batch (JSONL). Cada entrada mapea a una geografía.
 export async function* iterateMarketResults(batchId: string): AsyncGenerator<GeoResult> {

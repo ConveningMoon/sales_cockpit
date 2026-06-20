@@ -4,6 +4,7 @@ import path from "path";
 // Cache en memoria — se limpia en cada cold start (Vercel destruye instancias al redeploy).
 let _clasificacion: ParsedPrompt | null = null;
 let _marketData: ParsedPrompt | null = null;
+let _outreachSequence: ParsedPrompt | null = null;
 
 interface ParsedPrompt {
   system: string;
@@ -43,6 +44,42 @@ export function getMarketDataPrompt(): ParsedPrompt {
     _marketData = parsePromptFile(readPrompt("market-data.md"), "market-data.md");
   }
   return _marketData;
+}
+
+export function getOutreachSequencePrompt(): ParsedPrompt {
+  if (!_outreachSequence) {
+    _outreachSequence = parsePromptFile(readPrompt("outreach-sequence.md"), "outreach-sequence.md");
+  }
+  return _outreachSequence;
+}
+
+export interface OutreachLeadFields {
+  full_name: string | null;
+  headline: string | null;
+  current_position: string | null;
+  current_company: string | null;
+  cs_city: string | null;
+  cs_country: string | null;
+  cs_group: string | null;
+  summary: string | null;
+}
+
+export function buildOutreachUserMessage(
+  template: string,
+  lead: OutreachLeadFields,
+  marketParagraph: string,
+): string {
+  const summary = (lead.summary ?? "").slice(0, 1000) || "(sin resumen)";
+  return template
+    .replace("{cs_group}", lead.cs_group ?? "")
+    .replace("{full_name}", lead.full_name ?? "")
+    .replace("{headline}", lead.headline ?? "")
+    .replace("{role}", lead.current_position ?? "")
+    .replace("{company}", lead.current_company ?? "")
+    .replace("{city}", lead.cs_city ?? "(sin ciudad)")
+    .replace("{country}", lead.cs_country ?? "")
+    .replace("{summary}", summary)
+    .replace("{market_paragraph}", marketParagraph);
 }
 
 // Elimina fences markdown y trailing commas antes de JSON.parse().

@@ -76,6 +76,29 @@ export async function getUniqueGeos(
   return out;
 }
 
+// Devuelve el market_paragraph para la geo del lead (mismo match que isGeoCached).
+// Si no hay dato cacheado → paragraph vacío + found=false (degradación visible, no error).
+export async function getMarketParagraph(
+  supabase: Supabase,
+  geo: { country: string | null; city: string | null },
+): Promise<{ paragraph: string; found: boolean }> {
+  if (!geo.country) return { paragraph: "", found: false };
+
+  let q = supabase
+    .from("market_data")
+    .select("market_paragraph")
+    .eq("country", geo.country)
+    .or("expires_at.is.null,expires_at.gt.now()");
+  q = geo.city !== null
+    ? (q.eq("city", geo.city) as typeof q)
+    : (q.is("city", null) as typeof q);
+  const { data } = await q.maybeSingle();
+  return {
+    paragraph: (data?.market_paragraph as string | null) ?? "",
+    found: data !== null,
+  };
+}
+
 export async function isGeoCached(supabase: Supabase, geo: MarketGeo): Promise<boolean> {
   let q = supabase
     .from("market_data")
