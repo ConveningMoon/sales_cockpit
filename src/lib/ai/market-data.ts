@@ -1,5 +1,5 @@
 import { createServerClient } from "@/lib/supabase/server";
-import { cleanJsonOutput } from "@/lib/ai/prompts";
+import { extractJsonObject } from "@/lib/ai/prompts";
 import type { MarketGeo } from "@/lib/ai/batch";
 
 // ---------------------------------------------------------------------------
@@ -20,7 +20,7 @@ export interface MarketDataParsed {
 }
 
 export function parseMarketDataJson(raw: string): MarketDataParsed {
-  const text = cleanJsonOutput(raw);
+  const text = extractJsonObject(raw);
   const data = JSON.parse(text) as Record<string, unknown>;
 
   const required = ["price_sqm", "sale_velocity", "buyer_profile", "demand_level", "market_paragraph"];

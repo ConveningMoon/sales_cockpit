@@ -53,3 +53,63 @@ export function cleanJsonOutput(raw: string): string {
     .replace(/,(\s*[}\]])/g, "$1")
     .trim();
 }
+
+// Extrae un objeto JSON de texto que puede traer prosa, narración o fences alrededor.
+// El modelo a veces narra ("Con los datos recopilados, genero el JSON:") antes del objeto,
+// o lo envuelve en ```json … ```. Estrategia:
+//   1) si hay un fence ```json … ``` (o ``` … ```), usa su interior;
+//   2) si no, escanea desde el primer "{" con emparejado de llaves balanceado
+//      (respetando strings y escapes) hasta su "}" de cierre — no el ingenuo primer-a-último.
+// Quita trailing commas. Lanza error claro si no hay objeto o si quedó truncado.
+export function extractJsonObject(raw: string): string {
+  let text = raw.trim();
+
+  // 1) Interior de un fence de código cerrado, si existe
+  const fence = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) {
+    text = fence[1].trim();
+  }
+
+  // 2) Escaneo de llaves balanceadas desde el primer "{"
+  const start = text.indexOf("{");
+  if (start === -1) {
+    throw new Error("No se encontró un objeto JSON en la respuesta del modelo.");
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let end = -1;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth++;
+    else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        end = i;
+        break;
+      }
+    }
+  }
+
+  if (end === -1) {
+    throw new Error("Objeto JSON incompleto (posible truncación de la respuesta del modelo).");
+  }
+
+  const candidate = text.slice(start, end + 1);
+  // Quitar trailing commas antes de } o ]
+  return candidate.replace(/,(\s*[}\]])/g, "$1");
+}
