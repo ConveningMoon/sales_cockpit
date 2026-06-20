@@ -21,10 +21,10 @@ export class AnthropicProvider implements AiProvider {
   }
 
   async complete(params: ProviderCallParams): Promise<ProviderResult> {
-    // web_search_20260209 es un tool nativo de Anthropic sin input_schema — el cast doble
-    // es necesario porque Anthropic.Tool lo requiere pero el tool nativo no lo tiene.
+    // web_search_20260209 es un tool nativo de Anthropic sin input_schema.
+    // max_uses acota la cantidad de búsquedas por llamada — reduce latencia y costo.
     const tools: Anthropic.MessageCreateParams["tools"] = params.webSearch
-      ? [{ type: "web_search_20260209", name: "web_search" } as unknown as Anthropic.Tool]
+      ? [{ type: "web_search_20260209", name: "web_search", max_uses: params.webSearchMaxUses ?? 5 } as unknown as Anthropic.Tool]
       : undefined;
 
     const response = await this.client.messages.create({

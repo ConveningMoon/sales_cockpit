@@ -44,6 +44,7 @@ export async function callAI(options: AICallOptions): Promise<AICallResult> {
     model: modelId,
     maxTokens: options.maxTokens ?? 2048,
     webSearch: options.webSearch ?? false,
+    webSearchMaxUses: options.webSearchMaxUses,
   });
 
   const tokenCostUsd =

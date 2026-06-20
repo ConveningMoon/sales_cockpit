@@ -29,6 +29,7 @@ export interface AICallOptions {
   userMessage: string;
   model?: string;
   webSearch?: boolean;
+  webSearchMaxUses?: number;
   leadId?: string;
   maxTokens?: number;
 }
@@ -47,4 +48,5 @@ export interface ProviderCallParams {
   model: string;
   maxTokens: number;
   webSearch: boolean;
+  webSearchMaxUses?: number;
 }
