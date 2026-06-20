@@ -63,7 +63,7 @@ export async function callAI(options: AICallOptions): Promise<AICallResult> {
     });
 
     // Log del intento fallido — no bloqueante, no oculta el error original
-    logAiUsage({
+    recordAiUsage({
       taskType: options.taskType,
       model: modelId,
       provider: modelConfig.provider,
@@ -103,7 +103,7 @@ export async function callAI(options: AICallOptions): Promise<AICallResult> {
     `searches=${raw.webSearchRequests} cost=$${costUsd.toFixed(4)}`
   );
 
-  logAiUsage({
+  recordAiUsage({
     taskType: options.taskType,
     model: modelId,
     provider: modelConfig.provider,
@@ -132,7 +132,9 @@ export async function callAI(options: AICallOptions): Promise<AICallResult> {
   };
 }
 
-async function logAiUsage(params: {
+// Exportada para que el flujo de Batch API (market-data/poll) registre cada
+// resultado del batch en ai_usage con el mismo esquema.
+export async function recordAiUsage(params: {
   taskType: AiTaskType;
   model: string;
   provider: string;
