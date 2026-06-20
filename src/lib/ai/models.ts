@@ -66,7 +66,7 @@ export const MODELS: Record<string, ModelConfig> = {
 
 export const DEFAULT_MODELS: Record<AiTaskType, string> = {
   clasificacion: "claude-haiku-4-5-20251001",
-  market_data: "claude-haiku-4-5-20251001",
+  market_data: "claude-sonnet-4-6",
   outreach: "claude-sonnet-4-6",
   draft: "claude-sonnet-4-6",
   other: "claude-haiku-4-5-20251001",

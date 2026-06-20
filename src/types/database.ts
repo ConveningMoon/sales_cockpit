@@ -97,12 +97,25 @@ export interface OutreachSequence {
 
 export type OutreachSequenceInsert = Omit<OutreachSequence, "id" | "generated_at">;
 
+export type BatchStatus =
+  | "pending"
+  | "classifying"
+  | "fetching_market"
+  | "generating"
+  | "done"
+  | "error";
+
 export interface MarketData {
   id: string;
   country: string;
   city: string | null;
   stat: string;
   common_problem: string;
+  price_sqm: string | null;
+  sale_velocity: string | null;
+  buyer_profile: string | null;
+  demand_level: string | null;
+  market_paragraph: string | null;
   source_note: string | null;
   model: string | null;
   raw: Record<string, unknown> | null;
@@ -117,6 +130,8 @@ export interface Batch {
   name: string;
   source: string | null;
   lead_count: number;
+  status: BatchStatus;
+  error_message: string | null;
   imported_at: string;
 }
 
