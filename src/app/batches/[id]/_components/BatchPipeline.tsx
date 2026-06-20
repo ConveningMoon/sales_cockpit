@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { safeFetch } from "@/lib/http/safeFetch";
 import type { BatchStatus } from "@/types/database";
 
 type Props = {
@@ -65,8 +66,7 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
 
     try {
       while (true) {
-        const res = await fetch(`/api/batches/${batchId}/classify`, { method: "POST" });
-        const data = (await res.json()) as {
+        const { ok, data } = await safeFetch<{
           classified?: number;
           total?: number;
           remaining?: number;
@@ -75,25 +75,27 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
           error?: string;
           stage?: string;
           context?: unknown;
-        };
+        }>(`/api/batches/${batchId}/classify`, { method: "POST" });
 
-        if (!res.ok) {
-          showError(data, "Error en la clasificación.");
+        if (!ok) {
+          showError(data ?? {}, "Error en la clasificación.");
           return;
         }
 
-        classified += data.classified ?? 0;
-        const total = data.total ?? leadCount;
+        // safeFetch lanza si el body no es JSON; si llegamos aquí con ok=true, data != null
+        const d = data!;
+        classified += d.classified ?? 0;
+        const total = d.total ?? leadCount;
         setProgress(`${classified} / ${total} clasificado${classified !== 1 ? "s" : ""}`);
 
-        if (data.errors && data.errors.length > 0) {
+        if (d.errors && d.errors.length > 0) {
           // Mostrar el primer error con detalle; resumir el resto
-          const first = data.errors[0].message;
-          const extra = data.errors.length > 1 ? ` (+${data.errors.length - 1} más)` : "";
+          const first = d.errors[0].message;
+          const extra = d.errors.length > 1 ? ` (+${d.errors.length - 1} más)` : "";
           toast.warning(`Clasificación parcial: ${first}${extra}`);
         }
 
-        if (data.done) break;
+        if (d.done) break;
       }
 
       toast.success("Clasificación completada.");
@@ -116,8 +118,7 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
 
     try {
       while (true) {
-        const res = await fetch(`/api/batches/${batchId}/market-data`, { method: "POST" });
-        const data = (await res.json()) as {
+        const { ok, data } = await safeFetch<{
           done?: boolean;
           total?: number;
           remaining?: number;
@@ -126,20 +127,22 @@ export function BatchPipeline({ batchId, initialStatus, leadCount, errorMessage 
           error?: string;
           stage?: string;
           context?: unknown;
-        };
+        }>(`/api/batches/${batchId}/market-data`, { method: "POST" });
 
-        if (!res.ok) {
-          showError(data, "Error al obtener datos de mercado.");
+        if (!ok) {
+          showError(data ?? {}, "Error al obtener datos de mercado.");
           return;
         }
 
-        if (data.country) {
-          const geo = [data.city, data.country].filter(Boolean).join(", ");
-          const done = (data.total ?? 0) - (data.remaining ?? 0);
-          setProgress(`Buscando mercado: ${geo} — ${done} / ${data.total ?? "?"}`);
+        // safeFetch lanza si el body no es JSON; si llegamos aquí con ok=true, data != null
+        const d = data!;
+        if (d.country) {
+          const geo = [d.city, d.country].filter(Boolean).join(", ");
+          const done = (d.total ?? 0) - (d.remaining ?? 0);
+          setProgress(`Buscando mercado: ${geo} — ${done} / ${d.total ?? "?"}`);
         }
 
-        if (data.done) break;
+        if (d.done) break;
       }
 
       toast.success("Datos de mercado obtenidos.");
