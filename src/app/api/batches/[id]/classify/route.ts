@@ -146,7 +146,7 @@ export async function POST(
   if (done) {
     await supabase
       .from("batches")
-      .update({ status: "fetching_market" } as Record<string, unknown>)
+      .update({ status: "generating" } as Record<string, unknown>)
       .eq("id", batchId);
   }
 

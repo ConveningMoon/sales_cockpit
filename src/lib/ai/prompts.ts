@@ -67,7 +67,6 @@ export interface OutreachLeadFields {
 export function buildOutreachUserMessage(
   template: string,
   lead: OutreachLeadFields,
-  marketParagraph: string,
 ): string {
   const summary = (lead.summary ?? "").slice(0, 1000) || "(sin resumen)";
   return template
@@ -78,8 +77,7 @@ export function buildOutreachUserMessage(
     .replace("{company}", lead.current_company ?? "")
     .replace("{city}", lead.cs_city ?? "(sin ciudad)")
     .replace("{country}", lead.cs_country ?? "")
-    .replace("{summary}", summary)
-    .replace("{market_paragraph}", marketParagraph);
+    .replace("{summary}", summary);
 }
 
 // Elimina fences markdown y trailing commas antes de JSON.parse().

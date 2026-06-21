@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import { submitOutreachBatch, OUTREACH_MODEL } from "@/lib/ai/batch";
 import { getOutreachSequencePrompt, buildOutreachUserMessage } from "@/lib/ai/prompts";
-import { getMarketParagraph } from "@/lib/ai/market-data";
 
 // Submit es rápido (solo crea el job en Anthropic) — no espera al modelo.
 export const maxDuration = 60;
@@ -56,49 +55,24 @@ export async function POST(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (supabase.from("batches") as any).update({ status: "done" }).eq("id", batchId);
     console.log(`[generate] batch=${batchId} — 0 leads A/B, avanzando a done`);
-    return NextResponse.json({ submitted: 0, noMarketDataCount: 0, done: true });
-  }
-
-  // Deduplicar geos para hacer N queries en vez de leads.length queries
-  const geoKeyMap = new Map<string, { paragraph: string; found: boolean }>();
-  for (const lead of leads) {
-    const key = `${lead.cs_country ?? ""}|${lead.cs_city ?? ""}`;
-    if (!geoKeyMap.has(key)) {
-      const result = await getMarketParagraph(supabase, {
-        country: lead.cs_country as string | null,
-        city: lead.cs_city as string | null,
-      });
-      geoKeyMap.set(key, result);
-    }
+    return NextResponse.json({ submitted: 0, done: true });
   }
 
   const { system, userTemplate } = getOutreachSequencePrompt();
 
-  let noMarketDataCount = 0;
-  const leadsWithMessages = leads.map((lead) => {
-    const key = `${lead.cs_country ?? ""}|${lead.cs_city ?? ""}`;
-    const geo = geoKeyMap.get(key) ?? { paragraph: "", found: false };
-    // Solo grupo A debería usar market_paragraph; para B el prompt ya lo ignora.
-    // Contamos degradación solo en A (para B es intencional no tener dato).
-    if (lead.cs_group === "A" && !geo.found) noMarketDataCount++;
-    return {
-      leadId: lead.id as string,
-      userMessage: buildOutreachUserMessage(
-        userTemplate,
-        {
-          full_name: lead.full_name as string | null,
-          headline: lead.headline as string | null,
-          current_position: lead.current_position as string | null,
-          current_company: lead.current_company as string | null,
-          cs_city: lead.cs_city as string | null,
-          cs_country: lead.cs_country as string | null,
-          cs_group: lead.cs_group as string | null,
-          summary: lead.summary as string | null,
-        },
-        geo.paragraph,
-      ),
-    };
-  });
+  const leadsWithMessages = leads.map((lead) => ({
+    leadId: lead.id as string,
+    userMessage: buildOutreachUserMessage(userTemplate, {
+      full_name: lead.full_name as string | null,
+      headline: lead.headline as string | null,
+      current_position: lead.current_position as string | null,
+      current_company: lead.current_company as string | null,
+      cs_city: lead.cs_city as string | null,
+      cs_country: lead.cs_country as string | null,
+      cs_group: lead.cs_group as string | null,
+      summary: lead.summary as string | null,
+    }),
+  }));
 
   let outreachBatchId: string;
   try {
@@ -118,15 +92,12 @@ export async function POST(
     .update({ outreach_batch_id: outreachBatchId })
     .eq("id", batchId);
 
-  const modelLabel = OUTREACH_MODEL;
   console.log(
-    `[generate] batch=${batchId} job=${outreachBatchId} — enviados ${leads.length} lead${leads.length !== 1 ? "s" : ""} ` +
-    `(${noMarketDataCount} grupo A sin datos de mercado) modelo=${modelLabel}`,
+    `[generate] batch=${batchId} job=${outreachBatchId} — enviados ${leads.length} lead${leads.length !== 1 ? "s" : ""} modelo=${OUTREACH_MODEL}`,
   );
 
   return NextResponse.json({
     submitted: leads.length,
-    noMarketDataCount,
     outreachBatchId,
   });
 }

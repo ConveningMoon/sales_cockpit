@@ -8,7 +8,6 @@ import {
   OUTREACH_MODEL,
 } from "@/lib/ai/batch";
 import { extractJsonObject } from "@/lib/ai/prompts";
-import { getMarketParagraph } from "@/lib/ai/market-data";
 
 // Poll recupera estado/resultados — rápido, no espera al modelo.
 export const maxDuration = 60;
@@ -81,34 +80,6 @@ export async function POST(
     return NextResponse.json({ status: "in_progress", counts: progress.counts });
   }
 
-  // Job terminado → recuperar, parsear e ingerir secuencias.
-  // Precargar info de geo para marcar market_data:false en leads A sin dato.
-  const { data: leadsGeo } = await supabase
-    .from("leads")
-    .select("id, cs_group, cs_country, cs_city")
-    .eq("batch_id", batchId)
-    .in("cs_group", ["A", "B"]);
-
-  // Mapa leadId → {group, geoKey}
-  type LeadMeta = { group: string; geoKey: string };
-  const leadMeta = new Map<string, LeadMeta>();
-  const uniqueGeoKeys = new Set<string>();
-  for (const l of leadsGeo ?? []) {
-    const geoKey = `${l.cs_country ?? ""}|${l.cs_city ?? ""}`;
-    leadMeta.set(l.id as string, { group: l.cs_group as string, geoKey });
-    uniqueGeoKeys.add(geoKey);
-  }
-  // Qué geos tienen market_data
-  const geosWithMarketData = new Set<string>();
-  for (const key of uniqueGeoKeys) {
-    const [country, city] = key.split("|");
-    const r = await getMarketParagraph(supabase, {
-      country: country || null,
-      city: city || null,
-    });
-    if (r.found) geosWithMarketData.add(key);
-  }
-
   const model = getModel(OUTREACH_MODEL);
   let succeeded = 0;
   const errors: { leadId: string; detail: string }[] = [];
@@ -123,12 +94,6 @@ export async function POST(
           r.cachedTokens * model.costPerCacheReadToken) *
         BATCH_TOKEN_DISCOUNT;
 
-      // market_data:false si es grupo A y su geo no tiene dato cacheado.
-      const meta = leadMeta.get(leadId);
-      const hadMarketData = meta ? geosWithMarketData.has(meta.geoKey) : true;
-      const isGroupA = meta?.group === "A";
-      const marketDataFlag = !isGroupA || hadMarketData;
-
       const baseUsage = {
         taskType: "outreach" as const,
         model: OUTREACH_MODEL,
@@ -141,7 +106,6 @@ export async function POST(
         context: {
           batch_id: batchId,
           via: "batch_api",
-          market_data: marketDataFlag,
         } as Record<string, unknown>,
       };
 
