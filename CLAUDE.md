@@ -463,16 +463,13 @@ logica: adaptarla.
 - TypeScript limpio + lint clean en todos los commits.
 
 **Slice 5b-1 completado (2026-06-19).** Control manual de estado del lead:
-- `PATCH /api/leads/[id]`: actualiza solo `lead_status`; valida contra los 9 estados
-  canonicos; override directo, sin pasar por `computeLeadStatus`.
+- `PATCH /api/leads/[id]`: actualiza solo `lead_status`; valida contra los estados canonicos;
+  override directo, sin pasar por `computeLeadStatus`.
 - `StatusSelector` (client island): badge semantico del estado actual + `<select>` nativo
-  con `<optgroup>` "Pipeline" (nuevo..estrategia_agendada) y "Cierre" (cliente/perdido/descartado).
-  Update optimista con revert en error; `router.refresh()` para reflejar en la bandeja.
+  con `<optgroup>`. Update optimista con revert en error; `router.refresh()` para bandeja.
 - `LeadProfile`: recibe `leadId`; sustituye el badge estatico por `StatusSelector`.
-- `ui-helpers.ts` ampliado: `en_conversacion` (violeta), `estrategia_agendada` (teal);
-  eliminado `interesado` (no existe en el esquema DB).
-- `computeLeadStatus` no se toca. `PROTECTED_STATUSES` ya cubre `demo_agendada` y
-  `estrategia_agendada` → un inbound posterior no degrada el estado fijado manualmente.
+- **Nota:** el enum de `lead_status` y `computeLeadStatus`/`PROTECTED_STATUSES` fueron
+  reemplazados por completo en Push 1 (ver abajo).
 
 **Slice 6 Push A completado (2026-06-20).** Pipeline batch — Fases 1-3:
 - **Migracion 003** (`supabase/migrations/003_batch_pipeline.sql`):
@@ -659,6 +656,43 @@ logica: adaptarla.
 - **Fuera del MVP (decision de Dylan):** reply-rate por tipo de mensaje (`batches.lh2_stats`
   jsonb) — es doble-captura manual desde LH2; se agrega despues sin retrabajo.
 
+**Push 1 completado (2026-06-21).** Sistema de estados inglés + estado 100% manual + search + filtro en bandeja.
+- **Migracion 008** (`supabase/migrations/008_lead_status_v2.sql`):
+  - Enum `lead_status` → 12 claves inglesas: `without_answer`, `opener_answered`, `fu1_sent`,
+    `fu2_sent`, `in_follow_up`, `interested`, `in_demo`, `in_strategy`, `client`,
+    `closed`, `passive_discard`, `rejected`. Default → `without_answer`.
+  - Mapeo de migración: nuevo/contactado→without_answer, respondio/en_conversacion→opener_answered,
+    demo_agendada→in_demo, estrategia_agendada→in_strategy, cliente→client,
+    perdido→closed, descartado→passive_discard.
+  - `closing_reason`: 5 claves renombradas (went_silent→stopped_responding,
+    not_real_estate→not_in_real_estate, has_system→already_has_system,
+    not_qualified→profile_unqualified, ghosted_after_yes→said_yes_ghosted).
+  - `answer_quality`: positiva→positive, neutra→neutral, negativa→negative.
+  - Vista `leads_awaiting_reply`: exclusión actualizada a `('client','closed','passive_discard','rejected')`.
+- **Estado 100% manual (salvo el inicial):** `computeLeadStatus` y `PROTECTED_STATUSES`
+  eliminados de `ingest.ts`. Leads existentes en re-import conservan su estado actual.
+  El único automático: un lead NUEVO arranca en `without_answer`.
+  Call sites actualizados: `api/leads/route.ts`, `api/leads/import/route.ts`,
+  `api/batches/route.ts`, `api/leads/[id]/import-conversation/route.ts`.
+- **Tags en inglés:** `CLOSING_REASONS` (14 claves, etiquetas es-LA) y `ANSWER_QUALITIES`
+  (positive/neutral/negative, etiquetas es-LA) en `ui-helpers.ts`. `VALID_STATUSES` en
+  `PATCH /api/leads/[id]` actualizado a 12 claves.
+- **`StatusSelector`:** optgroups "── Pipeline ──" (9 estados) y "── Closed ──" (3 estados).
+  `statusBadgeClass`/`statusLabel` cubiertos para los 12 nuevos valores.
+- **Bandeja — search + filtro + badge:**
+  - `page.tsx` lee `searchParams.q` y `searchParams.status`. Aplica ILIKE server-side
+    (`full_name` o `current_company`). Filtro de estado explícito omite la exclusión de
+    closed/passive_discard/rejected (permite mostrarlo todo al seleccionarlo).
+  - `BandejaClient`: barra de búsqueda (debounce 350ms) + select de estado (inmediato),
+    ambos actualizan la URL via `router.push`. "Por responder" tab funciona sobre la
+    intersección de leads filtrados y `awaitingIds`.
+  - `LeadCard`: nuevo prop `leadStatus` + badge de estado visible siempre en la tarjeta.
+  - `batches/[id]/page.tsx`: `STATUS_ORDER` actualizado con 12 claves inglesas.
+- **Deuda conocida (anotada):** el proxy `result.lead_status === "without_answer"` para
+  contar `created` en `api/batches/route.ts` tiene un sesgo: leads existentes que siguen
+  en `without_answer` se cuentan como creados. Se corregirá en Push 3 (agregar leads a
+  batch existente) con una señal real insert-vs-update desde upsertLead.
+
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
@@ -695,6 +729,9 @@ logica: adaptarla.
      generating → done. Los helpers de market-data se conservan para la etapa (c).
 7. **Tracking + analitica de campana:** migracion 007 (closing_reason, answer_quality), costo por
    lead/campana (via columna `ai_usage.lead_id`), dashboard en `/batches/[id]`. **COMPLETADO
+   (2026-06-21).**
+8. **Push 1 — sistema de estados v2:** migracion 008 (enum inglés 12 estados), estado 100%
+   manual salvo el inicial, search + filtro en bandeja, badge de estado en cards. **COMPLETADO
    (2026-06-21).**
 
 ---
