@@ -690,6 +690,9 @@ logica: adaptarla.
    - **Push B (Fases 4-5):** migracion 006 (outreach_batch_id), endpoints generate + poll +
      export CSV. Batch API async (Sonnet, sin web search). Degradacion visible para A sin mercado.
      **COMPLETADO (2026-06-21).**
+   - **Simplificacion post-datos reales (2026-06-21):** stage de market-data eliminado del
+     pipeline (decisiones a y b del seccion 13). Flujo reducido: pending → classifying →
+     generating → done. Los helpers de market-data se conservan para la etapa (c).
 7. **Tracking + analitica de campana:** migracion 007 (closing_reason, answer_quality), costo por
    lead/campana (via columna `ai_usage.lead_id`), dashboard en `/batches/[id]`. **COMPLETADO
    (2026-06-21).**
@@ -698,22 +701,28 @@ logica: adaptarla.
 
 ## 13. Decisiones de producto (basadas en datos de campanas reales)
 
-> Etapas EN COLA derivadas del analisis de 3 campanas reales. Pendientes de ejecutar.
-> No implementar sin confirmacion de Dylan (Fase 0 primero).
-
-- **a) Eliminar el stage de market-data del batch.** Las 3 campanas reales prueban que el dato
-  de mercado en frio rinde **peor** (Wave 7: peor en respuestas positivas y en profundidad de
-  conversacion). El costo de market-data (Sonnet + web search, ~$0.06/geo) no se justifica.
-  Plan tentativo: el pipeline batch saltaria `fetching_market` y generaria secuencias sin
-  inyectar `market_paragraph` (el prompt ya maneja contexto vacio). **Pendiente de ejecutar.**
-- **b) Corregir el FU1 del prompt de secuencia.** El FU1 actual (pivote a insight, anclado en
-  Wave 6) saco **1.2%** de respuesta; el que funciona es la **re-pregunta simple** (Wave 5,
-  **12.9%**). Plan: reescribir la intencion de `fu1` en `prompts/outreach-sequence.md` hacia la
-  re-pregunta. **Pendiente.**
+- **a) ~~Eliminar el stage de market-data del batch.~~ HECHO (2026-06-21).** Las 3 campanas
+  reales probaron que el dato de mercado en frio rinde **peor** (Wave 7: peor en respuestas
+  positivas y en profundidad de conversacion). El costo (~$0.06/geo, ~96% del gasto total del
+  batch) no se justificaba. Implementado:
+  - `classify` avanza directo a `"generating"` (saltea `fetching_market`).
+  - `buildOutreachUserMessage` ya no acepta `marketParagraph` (firma honesta).
+  - Endpoints `market-data/submit` y `market-data/poll` eliminados del pipeline.
+  - `reset-market` reemplazado por `reset-generate` (acepta `error` o `fetching_market` heredado).
+  - **CONSERVADOS intactos para la etapa (c):** tabla `market_data`, `prompts/market-data.md`,
+    `src/lib/ai/market-data.ts`, helpers `submitMarketDataBatch`/`getMarketParagraph`.
+    La etapa (c) los reutilizara en el path del borrador del cockpit — no en el pipeline batch.
+- **b) ~~Corregir el FU1 del prompt de secuencia.~~ HECHO (2026-06-21).** El FU1 anterior
+  (pivote a insight, Wave 6) saco **1.2%** de respuesta. Reemplazado por la **re-pregunta
+  genuina** (Wave 5, **12.9%**). Implementado en `prompts/outreach-sequence.md`: el FU1 ahora
+  re-engancha con una pregunta corta y genuina sobre captacion; **prohibido** pivotar a insight
+  o "contarte que hacen otros". Ejemplo canonico: "me quede con curiosidad. En tu captacion,
+  que es lo que mas te esta robando energia ultimamente?"
 - **c) Enriquecimiento opt-in de market data en el borrador del cockpit.** En vez de inyectar
   mercado siempre, el modelo **senala** cuando un dato reforzaria la respuesta; el humano
   **aprueba con un clic** una busqueda web acotada. Mantiene el costo bajo control y solo usa
-  mercado cuando suma. **Pendiente.**
+  mercado cuando suma. **Pendiente.** Vive en el path del cockpit (`generateDraft` +
+  `respuesta-lead.md`), no en el pipeline batch ni en `buildOutreachUserMessage`.
 
 ---
 
