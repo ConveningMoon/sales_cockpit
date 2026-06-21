@@ -4,6 +4,7 @@ import { createServerClient } from "@/lib/supabase/server";
 import { BatchPipeline } from "./_components/BatchPipeline";
 import { BatchAnalytics } from "./_components/BatchAnalytics";
 import { AddLeadsUploader } from "./_components/AddLeadsUploader";
+import { Lh2StatsForm } from "./_components/Lh2StatsForm";
 import type { BatchStatus } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export default async function BatchPage({ params }: PageProps) {
 
   const { data: batch } = await supabase
     .from("batches")
-    .select("id, name, source, lead_count, status, error_message, market_batch_id, outreach_batch_id, imported_at")
+    .select("id, name, source, lead_count, status, error_message, market_batch_id, outreach_batch_id, lh2_stats, imported_at")
     .eq("id", batchId)
     .maybeSingle();
 
@@ -158,6 +159,21 @@ export default async function BatchPage({ params }: PageProps) {
             leadCount={batch.lead_count as number}
             errorMessage={(batch.error_message as string | null) ?? null}
             outreachBatchInFlight={Boolean(batch.outreach_batch_id)}
+          />
+        </div>
+
+        {/* Estadísticas de LH2 */}
+        <div className="rounded-xl border border-border/50 bg-card p-5 space-y-3">
+          <h2 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
+            Estadísticas de LH2
+          </h2>
+          <Lh2StatsForm
+            batchId={batchId}
+            initial={(batch.lh2_stats as {
+              opener: { sent: number; replied: number };
+              fu1: { sent: number; replied: number };
+              fu2: { sent: number; replied: number };
+            } | null) ?? null}
           />
         </div>
 
