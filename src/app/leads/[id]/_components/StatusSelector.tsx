@@ -6,15 +6,18 @@ import { toast } from "sonner";
 import { statusBadgeClass, statusLabel } from "@/lib/ui-helpers";
 
 const PIPELINE_STATUSES = [
-  "nuevo",
-  "contactado",
-  "respondio",
-  "en_conversacion",
-  "demo_agendada",
-  "estrategia_agendada",
+  "without_answer",
+  "opener_answered",
+  "fu1_sent",
+  "fu2_sent",
+  "in_follow_up",
+  "interested",
+  "in_demo",
+  "in_strategy",
+  "client",
 ] as const;
 
-const CIERRE_STATUSES = ["cliente", "perdido", "descartado"] as const;
+const CLOSED_STATUSES = ["closed", "passive_discard", "rejected"] as const;
 
 type Props = {
   leadId: string;
@@ -47,7 +50,7 @@ export function StatusSelector({ leadId, currentStatus }: Props) {
         return;
       }
 
-      toast.success(`Estado actualizado a "${statusLabel(next)}".`);
+      toast.success(`Status → "${statusLabel(next)}".`);
       startTransition(() => {
         router.refresh();
       });
@@ -84,7 +87,7 @@ export function StatusSelector({ leadId, currentStatus }: Props) {
           backgroundColor: "hsl(var(--background))",
           color: "hsl(var(--foreground))",
         }}
-        aria-label="Cambiar estado del lead"
+        aria-label="Change lead status"
       >
         <optgroup label="── Pipeline ──">
           {PIPELINE_STATUSES.map((s) => (
@@ -93,8 +96,8 @@ export function StatusSelector({ leadId, currentStatus }: Props) {
             </option>
           ))}
         </optgroup>
-        <optgroup label="── Cierre ──">
-          {CIERRE_STATUSES.map((s) => (
+        <optgroup label="── Closed ──">
+          {CLOSED_STATUSES.map((s) => (
             <option key={s} value={s}>
               {statusLabel(s)}
             </option>
