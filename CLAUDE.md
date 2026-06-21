@@ -693,6 +693,37 @@ logica: adaptarla.
   en `without_answer` se cuentan como creados. Se corregirá en Push 3 (agregar leads a
   batch existente) con una señal real insert-vs-update desde upsertLead.
 
+**Push 3 completado (2026-06-22).** Agregar leads a batch existente + dashboard cross-batch.
+- **Migracion 010** (via MCP `apply_migration`): `batches.lh2_stats jsonb` — estadisticas
+  manuales de LH2 (enviados/respondidos por opener, FU1, FU2). Nullable.
+- **`upsertLead` retorna `wasCreated: boolean`** (`!existing` — señal real insert vs. update).
+  `batches/route.ts` y `leads/import/route.ts` actualizados para usar `wasCreated` en vez
+  del proxy `lead_status === "without_answer"` (que tenia sesgo para leads existentes en ese estado).
+- **classify guard relajado:** acepta cualquier estado salvo `"error"`. Antes solo aceptaba
+  `pending` o `classifying`. El guard real de idempotencia es el filtro `cs_group IS NULL`.
+- **generate idempotente:** antes de enviar a Anthropic, filtra leads que ya tienen filas en
+  `outreach_sequence`. Si todos ya tienen secuencias → avanza a `done` sin re-enviar.
+- **`POST /api/batches/[id]/add-leads`**: importa filas CSV al batch existente. Upsert por `lh_id`.
+  Actualiza `lead_count` con conteo real. Si hay leads nuevos: avanza batch a `"classifying"`
+  (salvo que estuviera en `"error"`). Retorna `{ added, updated, leadCount, errors }`.
+- **`AddLeadsUploader` (client)**: zona de drop CSV en `/batches/[id]`. Misma logica de parseo
+  que el import inicial. Tras importar: muestra added/updated; si hay nuevos, `router.refresh()`
+  → `BatchPipeline` ve `"classifying"` y presenta el boton de clasificacion.
+- **`PATCH /api/batches/[id]`** (nueva route): acepta `{ lh2_stats: Lh2Stats | null }`.
+  Valida estructura `{ opener, fu1, fu2: { sent, replied } }`.
+- **`Lh2StatsForm` (client)**: tabla de 3 filas (opener/FU1/FU2) con inputs enviados/respondidos
+  y tasa calculada inline. Boton Guardar visible solo cuando hay cambios; Limpiar cuando hay datos.
+- **`/dashboard` (Server Component, force-dynamic)**: tabla comparativa cross-batch.
+  - Columnas: campaña (nombre+estado+fecha), total/A/B leads, reply rates opener/FU1/FU2,
+    profundidad media, costo IA total y $/lead.
+  - Footer: Σ leads, pooled reply rates (Σ replied / Σ sent sobre batches con lh2_stats),
+    profundidad y costo ponderados por numero de leads.
+  - "—" para campos sin datos (lh2_stats o leads sin mensajes/costo).
+  - Link "Dashboard" en el header de la bandeja.
+- **Flujo add-leads completo:** `add-leads` → `router.refresh()` → `BatchPipeline` hace
+  classify (solo `cs_group IS NULL`) → generate (solo leads sin `outreach_sequence`) → `done`.
+  El batch completa el ciclo sin tocar leads ya procesados.
+
 **Push 2 completado (2026-06-22).** Motor de seguimiento + notas + label de batch.
 - **Migracion 009** (via MCP `apply_migration`, sin archivo SQL en repo):
   - `leads.status_changed_at timestamptz NOT NULL DEFAULT now()`: columna + trigger
@@ -771,6 +802,9 @@ logica: adaptarla.
 9. **Push 2 — motor de seguimiento:** migracion 009 (status_changed_at + trigger +
    reengagement task type), notas internas, label de batch, `/seguimientos` on-demand,
    `followup.ts` + endpoint, `FollowupGenerator` client island. **COMPLETADO (2026-06-22).**
+10. **Push 3 — agregar leads + dashboard:** migracion 010 (lh2_stats), upsertLead wasCreated,
+    classify guard flexible, generate idempotente, `add-leads` endpoint + UI, `Lh2StatsForm`,
+    `/dashboard` cross-batch. **COMPLETADO (2026-06-22).**
 
 ---
 
