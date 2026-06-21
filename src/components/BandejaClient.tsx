@@ -87,6 +87,13 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initi
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href="/seguimientos"
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground border border-border/50
+                         hover:text-foreground hover:border-border transition-colors"
+            >
+              Seguimientos
+            </Link>
+            <Link
               href="/batches"
               className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground border border-border/50
                          hover:text-foreground hover:border-border transition-colors"
