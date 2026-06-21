@@ -2,27 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, LeadStatus, MessageSource } from "@/types/database";
 import type { Lh2LeadData, Lh2MessageData } from "@/lib/lh/parser";
 
-// Etapas activas que no se degradan al recibir nuevo inbound.
-// "perdido" y "descartado" SÍ se reactivan a "respondio" (el lead volvió).
-export const PROTECTED_STATUSES = new Set<LeadStatus>([
-  "en_conversacion",
-  "demo_agendada",
-  "estrategia_agendada",
-  "cliente",
-]);
-
-export function computeLeadStatus(existing: LeadStatus | null): LeadStatus {
-  if (existing && PROTECTED_STATUSES.has(existing)) return existing;
-  return "respondio";
-}
-
 // newLeadStatus: status a asignar cuando el lead NO existe aún.
-// Usar "nuevo" para importación CSV (prospección); el default "respondio" es para inbound via cockpit.
+// Leads existentes preservan su estado actual sin ninguna transición automática.
 // batchId: si se pasa, se escribe en leads.batch_id (actualiza al batch más reciente en re-import).
 export async function upsertLead(
   supabase: SupabaseClient<Database>,
   leadData: Lh2LeadData,
-  newLeadStatus: LeadStatus = "respondio",
+  newLeadStatus: LeadStatus = "without_answer",
   batchId?: string | null
 ): Promise<{ id: string; lead_status: LeadStatus; full_name: string | null }> {
   const { data: existing } = await supabase
@@ -31,14 +17,10 @@ export async function upsertLead(
     .eq("lh_id", leadData.lh_id!)
     .maybeSingle();
 
-  const newStatus = existing
-    ? computeLeadStatus(existing.lead_status as LeadStatus)
-    : newLeadStatus;
-
-  // Supabase upsert solo incluye los campos proporcionados en el UPDATE SET;
-  // los campos ausentes (cs_group, score, etc.) no se sobreescriben en leads existentes.
-  // La aserción es segura — el runtime maneja correctamente el partial insert.
-  const upsertPayload: Record<string, unknown> = { ...leadData, lead_status: newStatus };
+  // Leads existentes: no se toca el estado (sin transiciones automáticas).
+  // Leads nuevos: se asigna newLeadStatus.
+  const upsertPayload: Record<string, unknown> = { ...leadData };
+  if (!existing) upsertPayload.lead_status = newLeadStatus;
   if (batchId !== undefined) upsertPayload.batch_id = batchId;
 
   const { data, error } = await supabase

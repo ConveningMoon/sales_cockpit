@@ -7,8 +7,7 @@ import {
 } from "@/lib/ai/conversation-parser";
 import { insertMessage } from "@/lib/leads/messages";
 import { generateDraft } from "@/lib/ai/draft";
-import { computeLeadStatus } from "@/lib/leads/ingest";
-import type { LeadStatus, MessageInsert } from "@/types/database";
+import type { MessageInsert } from "@/types/database";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -43,7 +42,7 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   // Verificar que el lead existe
   const { data: lead } = await supabase
     .from("leads")
-    .select("id, lead_status")
+    .select("id")
     .eq("id", leadId)
     .maybeSingle();
 
@@ -99,17 +98,6 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
   // — no se re-consulta por sent_at para evitar dependencia de precisión del timestamp.
   const lastMsg = b.messages[b.messages.length - 1];
   const lastIsInbound = lastMsg.direction === "inbound";
-
-  // Actualizar lead_status si el último mensaje es inbound (puede reactivar lead)
-  if (lastIsInbound) {
-    const newStatus = computeLeadStatus(lead.lead_status as LeadStatus);
-    if (newStatus !== lead.lead_status) {
-      await supabase
-        .from("leads")
-        .update({ lead_status: newStatus })
-        .eq("id", leadId);
-    }
-  }
 
   // Generar UN solo borrador al final, solo si el último mensaje es inbound
   let draft: { id: string; body: string; model: string } | null = null;

@@ -4,15 +4,18 @@ import type { LeadStatus } from "@/types/database";
 import { CLOSING_REASON_KEYS, ANSWER_QUALITY_KEYS } from "@/lib/ui-helpers";
 
 const VALID_STATUSES: LeadStatus[] = [
-  "nuevo",
-  "contactado",
-  "respondio",
-  "en_conversacion",
-  "demo_agendada",
-  "estrategia_agendada",
-  "cliente",
-  "perdido",
-  "descartado",
+  "without_answer",
+  "opener_answered",
+  "fu1_sent",
+  "fu2_sent",
+  "in_follow_up",
+  "interested",
+  "in_demo",
+  "in_strategy",
+  "client",
+  "closed",
+  "passive_discard",
+  "rejected",
 ];
 
 export async function PATCH(
@@ -31,7 +34,7 @@ export async function PATCH(
   const b = rawBody as Record<string, unknown>;
   const update: Record<string, unknown> = {};
 
-  // lead_status (opcional) — validado contra los 9 estados canónicos
+  // lead_status (opcional) — validado contra los 12 estados canónicos
   if ("lead_status" in b) {
     const status = b.lead_status;
     if (typeof status !== "string" || !VALID_STATUSES.includes(status as LeadStatus)) {

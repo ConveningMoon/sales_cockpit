@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
         .eq("lh_id", leadData.lh_id!)
         .maybeSingle();
 
-      const { id } = await upsertLead(supabase, leadData, "nuevo");
+      const { id } = await upsertLead(supabase, leadData, "without_answer");
 
       result.leadIds.push(id);
       if (existing) {

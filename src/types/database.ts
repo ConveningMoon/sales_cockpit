@@ -3,15 +3,18 @@
 //   supabase gen types typescript --linked
 
 export type LeadStatus =
-  | "nuevo"
-  | "contactado"
-  | "respondio"
-  | "en_conversacion"
-  | "demo_agendada"
-  | "estrategia_agendada"
-  | "cliente"
-  | "perdido"
-  | "descartado";
+  | "without_answer"
+  | "opener_answered"
+  | "fu1_sent"
+  | "fu2_sent"
+  | "in_follow_up"
+  | "interested"
+  | "in_demo"
+  | "in_strategy"
+  | "client"
+  | "closed"
+  | "passive_discard"
+  | "rejected";
 
 export type CsGroup = "A" | "B" | "NO_ESCRIBIR";
 export type MessageDirection = "inbound" | "outbound";
