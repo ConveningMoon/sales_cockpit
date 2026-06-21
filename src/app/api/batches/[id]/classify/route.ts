@@ -61,10 +61,10 @@ export async function POST(
       { status: 404 },
     );
   }
-  if (batch.status !== "pending" && batch.status !== "classifying") {
+  if (batch.status === "error") {
     return NextResponse.json(
       {
-        error: `El batch está en estado "${batch.status}", no se puede clasificar.`,
+        error: `El batch está en estado "error". Usa "Reintentar generación" o agrega leads nuevos primero.`,
         stage: "classify",
         context: { batchStatus: batch.status },
       },
@@ -72,8 +72,8 @@ export async function POST(
     );
   }
 
-  // Avanzar a 'classifying' en el primer chunk
-  if (batch.status === "pending") {
+  // Avanzar a 'classifying' si no lo está ya (funciona desde pending, generating, done, etc.)
+  if (batch.status !== "classifying") {
     await supabase
       .from("batches")
       .update({ status: "classifying" } as Record<string, unknown>)

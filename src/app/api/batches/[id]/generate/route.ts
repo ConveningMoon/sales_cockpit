@@ -58,9 +58,26 @@ export async function POST(
     return NextResponse.json({ submitted: 0, done: true });
   }
 
+  // Filtrar leads que ya tienen secuencias (idempotencia para add-leads)
+  const allAbIds = leads.map((l) => l.id as string);
+  const { data: existingSeqs } = await supabase
+    .from("outreach_sequence")
+    .select("lead_id")
+    .in("lead_id", allAbIds);
+  const generatedIds = new Set((existingSeqs ?? []).map((s) => s.lead_id as string));
+  const newLeads = leads.filter((l) => !generatedIds.has(l.id as string));
+
+  if (newLeads.length === 0) {
+    // Todos ya tienen secuencias — avanzar a done
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.from("batches") as any).update({ status: "done" }).eq("id", batchId);
+    console.log(`[generate] batch=${batchId} — todos los leads A/B ya tienen secuencias, avanzando a done`);
+    return NextResponse.json({ submitted: 0, done: true });
+  }
+
   const { system, userTemplate } = getOutreachSequencePrompt();
 
-  const leadsWithMessages = leads.map((lead) => ({
+  const leadsWithMessages = newLeads.map((lead) => ({
     leadId: lead.id as string,
     userMessage: buildOutreachUserMessage(userTemplate, {
       full_name: lead.full_name as string | null,
@@ -93,11 +110,11 @@ export async function POST(
     .eq("id", batchId);
 
   console.log(
-    `[generate] batch=${batchId} job=${outreachBatchId} — enviados ${leads.length} lead${leads.length !== 1 ? "s" : ""} modelo=${OUTREACH_MODEL}`,
+    `[generate] batch=${batchId} job=${outreachBatchId} — enviados ${newLeads.length} lead${newLeads.length !== 1 ? "s" : ""} modelo=${OUTREACH_MODEL}`,
   );
 
   return NextResponse.json({
-    submitted: leads.length,
+    submitted: newLeads.length,
     outreachBatchId,
   });
 }
