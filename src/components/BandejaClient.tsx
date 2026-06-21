@@ -94,6 +94,13 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initi
               Seguimientos
             </Link>
             <Link
+              href="/dashboard"
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground border border-border/50
+                         hover:text-foreground hover:border-border transition-colors"
+            >
+              Dashboard
+            </Link>
+            <Link
               href="/batches"
               className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted-foreground border border-border/50
                          hover:text-foreground hover:border-border transition-colors"
