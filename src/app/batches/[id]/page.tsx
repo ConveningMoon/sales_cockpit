@@ -39,8 +39,9 @@ export default async function BatchPage({ params }: PageProps) {
 
   // Embudo de estado — solo estados presentes, en orden canónico de pipeline
   const STATUS_ORDER = [
-    "nuevo", "contactado", "respondio", "en_conversacion",
-    "demo_agendada", "estrategia_agendada", "cliente", "perdido", "descartado",
+    "without_answer", "opener_answered", "fu1_sent", "fu2_sent",
+    "in_follow_up", "interested", "in_demo", "in_strategy", "client",
+    "closed", "passive_discard", "rejected",
   ];
   const statusCounts = leads.reduce<Record<string, number>>((acc, l) => {
     const s = l.lead_status as string;

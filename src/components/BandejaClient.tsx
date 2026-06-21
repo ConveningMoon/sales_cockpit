@@ -1,8 +1,18 @@
 "use client";
 
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { LeadCard } from "@/components/LeadCard";
+import { statusLabel } from "@/lib/ui-helpers";
+
+const PIPELINE_STATUSES = [
+  "without_answer", "opener_answered", "fu1_sent", "fu2_sent",
+  "in_follow_up", "interested", "in_demo", "in_strategy", "client",
+] as const;
+
+const CLOSED_STATUSES = ["closed", "passive_discard", "rejected"] as const;
 
 type Lead = {
   id: string;
@@ -11,6 +21,7 @@ type Lead = {
   current_position: string | null;
   cs_city: string | null;
   cs_country: string | null;
+  lead_status: string;
   last_activity_at: string | null;
   last_inbound_at: string | null;
 };
@@ -19,11 +30,45 @@ type Props = {
   leads: Lead[];
   awaitingIds: string[];
   fragmentMap: Record<string, string>;
+  initialQ: string;
+  initialStatus: string;
 };
 
-export function BandejaClient({ leads, awaitingIds, fragmentMap }: Props) {
+export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initialStatus }: Props) {
+  const router = useRouter();
   const awaitingSet = new Set(awaitingIds);
   const awaitingLeads = leads.filter((l) => awaitingSet.has(l.id));
+
+  const [inputValue, setInputValue] = useState(initialQ);
+  const [selectedStatus, setSelectedStatus] = useState(initialStatus);
+  const isFirstRender = useRef(true);
+
+  function pushUrl(q: string, status: string) {
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    if (status) params.set("status", status);
+    const qs = params.toString();
+    router.push(qs ? `/?${qs}` : "/", { scroll: false });
+  }
+
+  // Debounce la búsqueda de texto — evita push en el primer render
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    const id = setTimeout(() => {
+      pushUrl(inputValue.trim(), selectedStatus);
+    }, 350);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inputValue]);
+
+  function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value;
+    setSelectedStatus(next);
+    pushUrl(inputValue.trim(), next); // inmediato para el filtro de estado
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -61,8 +106,60 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap }: Props) {
       </header>
 
       <main className="mx-auto max-w-2xl px-4 py-5">
+        {/* Search + filtro de estado */}
+        <div className="flex gap-2 mb-4">
+          {/* Input de búsqueda */}
+          <div className="relative flex-1">
+            <svg
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground/50 pointer-events-none"
+              fill="none" stroke="currentColor" strokeWidth="2"
+              viewBox="0 0 24 24"
+            >
+              <circle cx="11" cy="11" r="8" />
+              <path d="m21 21-4.35-4.35" />
+            </svg>
+            <input
+              type="text"
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              placeholder="Buscar por nombre o empresa…"
+              className={[
+                "w-full h-8 pl-8 pr-3 rounded-lg border border-border/40 text-xs",
+                "bg-background/50 text-foreground placeholder:text-muted-foreground/40",
+                "focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40",
+                "transition-colors",
+              ].join(" ")}
+            />
+          </div>
+
+          {/* Filtro de estado */}
+          <select
+            value={selectedStatus}
+            onChange={handleStatusChange}
+            className={[
+              "h-8 rounded-lg border border-border/40 px-2 text-xs shrink-0",
+              "bg-background/50 text-foreground",
+              "focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40",
+              "hover:border-border/70 transition-colors cursor-pointer",
+            ].join(" ")}
+            style={{ colorScheme: "dark" }}
+          >
+            <option value="">All statuses</option>
+            <optgroup label="── Pipeline ──">
+              {PIPELINE_STATUSES.map((s) => (
+                <option key={s} value={s}>{statusLabel(s)}</option>
+              ))}
+            </optgroup>
+            <optgroup label="── Closed ──">
+              {CLOSED_STATUSES.map((s) => (
+                <option key={s} value={s}>{statusLabel(s)}</option>
+              ))}
+            </optgroup>
+          </select>
+        </div>
+
         <Tabs defaultValue="todos">
-          {/* Tabs refinados */}
+          {/* Tabs */}
           <TabsList className="mb-5 bg-muted/60 border border-border/50 p-0.5 h-auto gap-0.5 rounded-lg">
             <TabsTrigger
               value="todos"
@@ -100,7 +197,9 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap }: Props) {
             <div className="space-y-2">
               {leads.length === 0 && (
                 <p className="text-sm text-muted-foreground py-12 text-center">
-                  No hay leads activos. Crea uno con &ldquo;+ Nuevo lead&rdquo;.
+                  {inputValue || selectedStatus
+                    ? "Sin resultados para esta búsqueda."
+                    : 'No hay leads activos. Crea uno con "+ Nuevo lead".'}
                 </p>
               )}
               {leads.map((lead) => (
@@ -112,6 +211,7 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap }: Props) {
                   currentPosition={lead.current_position}
                   csCity={lead.cs_city}
                   csCountry={lead.cs_country}
+                  leadStatus={lead.lead_status}
                   lastActivity={lead.last_activity_at}
                   awaiting={awaitingSet.has(lead.id)}
                   fragment={fragmentMap[lead.id]}
@@ -136,6 +236,7 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap }: Props) {
                   currentPosition={lead.current_position}
                   csCity={lead.cs_city}
                   csCountry={lead.cs_country}
+                  leadStatus={lead.lead_status}
                   lastActivity={lead.last_inbound_at}
                   awaiting
                   fragment={fragmentMap[lead.id]}

@@ -3,18 +3,39 @@ import { BandejaClient } from "@/components/BandejaClient";
 
 export const dynamic = "force-dynamic";
 
-export default async function BandejaPage() {
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
+
+export default async function BandejaPage({ searchParams }: { searchParams: SearchParams }) {
+  const sp = await searchParams;
+  const q = typeof sp.q === "string" ? sp.q.trim() : "";
+  const statusFilter = typeof sp.status === "string" ? sp.status.trim() : "";
+
   const supabase = createServerClient();
 
-  // Todos los leads activos ordenados por última actividad
-  const { data: allLeads } = await supabase
+  // Leads filtrados por search + estado
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let leadsQuery: any = supabase
     .from("leads")
     .select(
-      "id, full_name, current_company, current_position, cs_city, cs_country, last_activity_at, last_inbound_at"
-    )
-    .neq("lead_status", "perdido")
-    .neq("lead_status", "descartado")
-    .order("last_activity_at", { ascending: false });
+      "id, full_name, current_company, current_position, cs_city, cs_country, lead_status, last_activity_at, last_inbound_at"
+    );
+
+  if (statusFilter) {
+    // Filtro explícito: muestra ese estado (incluyendo closed/passive_discard/rejected)
+    leadsQuery = leadsQuery.eq("lead_status", statusFilter);
+  } else {
+    // Default: excluir estados cerrados
+    leadsQuery = leadsQuery
+      .neq("lead_status", "closed")
+      .neq("lead_status", "passive_discard")
+      .neq("lead_status", "rejected");
+  }
+
+  if (q) {
+    leadsQuery = leadsQuery.or(`full_name.ilike.%${q}%,current_company.ilike.%${q}%`);
+  }
+
+  const { data: allLeads } = await leadsQuery.order("last_activity_at", { ascending: false });
 
   // IDs de leads esperando respuesta (para badge y tab "Por responder")
   const { data: awaitingRows } = await supabase
@@ -46,6 +67,8 @@ export default async function BandejaPage() {
       leads={allLeads ?? []}
       awaitingIds={awaitingIds}
       fragmentMap={fragmentMap}
+      initialQ={q}
+      initialStatus={statusFilter}
     />
   );
 }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { statusBadgeClass, statusLabel } from "@/lib/ui-helpers";
 
 type Props = {
   id: string;
@@ -7,6 +8,7 @@ type Props = {
   currentPosition: string | null;
   csCity: string | null;
   csCountry: string | null;
+  leadStatus: string;
   lastActivity: string | null;
   awaiting: boolean;
   fragment?: string;
@@ -30,6 +32,7 @@ export function LeadCard({
   currentPosition,
   csCity,
   csCountry,
+  leadStatus,
   lastActivity,
   awaiting,
   fragment,
@@ -63,6 +66,10 @@ export function LeadCard({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-sm text-foreground truncate">
               {fullName ?? "Sin nombre"}
+            </span>
+            {/* Badge de estado */}
+            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ${statusBadgeClass(leadStatus)}`}>
+              {statusLabel(leadStatus)}
             </span>
             {awaiting && (
               <span
