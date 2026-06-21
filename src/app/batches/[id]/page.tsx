@@ -155,7 +155,6 @@ export default async function BatchPage({ params }: PageProps) {
             initialStatus={batch.status as BatchStatus}
             leadCount={batch.lead_count as number}
             errorMessage={(batch.error_message as string | null) ?? null}
-            marketBatchInFlight={Boolean(batch.market_batch_id)}
             outreachBatchInFlight={Boolean(batch.outreach_batch_id)}
           />
         </div>
