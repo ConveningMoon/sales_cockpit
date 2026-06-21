@@ -3,6 +3,7 @@ import { groupBadgeClass } from "@/lib/ui-helpers";
 import { StatusSelector } from "./StatusSelector";
 import { LeadTracking } from "./LeadTracking";
 import { LeadCost } from "./LeadCost";
+import { LeadNotes } from "./LeadNotes";
 
 type Props = {
   leadId: string;
@@ -20,6 +21,8 @@ type Props = {
   leadStatus: string;
   closingReason: string | null;
   answerQuality: string | null;
+  notes: string | null;
+  batchName: string | null;
   costTotal: number;
   costByStage: { taskType: string; cost: number }[];
 };
@@ -40,6 +43,8 @@ export function LeadProfile({
   leadStatus,
   closingReason,
   answerQuality,
+  notes,
+  batchName,
   costTotal,
   costByStage,
 }: Props) {
@@ -65,6 +70,11 @@ export function LeadProfile({
               className={`text-[11px] font-medium px-2 py-0.5 rounded-md ${groupBadgeClass(csGroup)}`}
             >
               Grupo {csGroup}
+            </span>
+          )}
+          {batchName && (
+            <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-muted/60 text-muted-foreground border border-border/40">
+              {batchName}
             </span>
           )}
         </div>
@@ -141,6 +151,11 @@ export function LeadProfile({
 
       {/* Costo de IA atribuido a este lead */}
       <LeadCost total={costTotal} byStage={costByStage} />
+
+      <Separator className="opacity-40" />
+
+      {/* Notas internas */}
+      <LeadNotes leadId={leadId} initialNotes={notes} />
 
       {/* Summary de LinkedIn */}
       {summary && (

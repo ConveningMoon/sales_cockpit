@@ -12,10 +12,11 @@ export default async function FichaPage({ params }: PageProps) {
   const { id: leadId } = await params;
   const supabase = createServerClient();
 
-  const { data: lead } = await supabase
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: lead } = await (supabase as any)
     .from("leads")
     .select(
-      "id, full_name, headline, current_position, current_company, location_name, cs_city, cs_country, cs_group, summary, website, profile_url, lead_status, closing_reason, answer_quality, raw_profile"
+      "id, full_name, headline, current_position, current_company, location_name, cs_city, cs_country, cs_group, summary, website, profile_url, lead_status, closing_reason, answer_quality, notes, raw_profile, batch:batches(name)"
     )
     .eq("id", leadId)
     .maybeSingle();
@@ -110,6 +111,8 @@ export default async function FichaPage({ params }: PageProps) {
               leadStatus={lead.lead_status as string}
               closingReason={(lead.closing_reason as string | null) ?? null}
               answerQuality={(lead.answer_quality as string | null) ?? null}
+              notes={(lead.notes as string | null) ?? null}
+              batchName={(lead.batch as { name: string } | null)?.name ?? null}
               costTotal={costTotal}
               costByStage={costByStage}
             />

@@ -9,6 +9,7 @@ type Props = {
   csCity: string | null;
   csCountry: string | null;
   leadStatus: string;
+  batchName?: string | null;
   lastActivity: string | null;
   awaiting: boolean;
   fragment?: string;
@@ -33,6 +34,7 @@ export function LeadCard({
   csCity,
   csCountry,
   leadStatus,
+  batchName,
   lastActivity,
   awaiting,
   fragment,
@@ -97,6 +99,9 @@ export function LeadCard({
           ) : location ? (
             <p className="text-xs text-muted-foreground/65 mt-0.5">{location}</p>
           ) : null}
+          {batchName && (
+            <p className="text-[10px] text-muted-foreground/50 mt-0.5 truncate">{batchName}</p>
+          )}
         </div>
 
         <span className="text-[11px] text-muted-foreground/55 shrink-0 mt-0.5 tabular-nums">

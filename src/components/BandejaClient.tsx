@@ -22,6 +22,7 @@ type Lead = {
   cs_city: string | null;
   cs_country: string | null;
   lead_status: string;
+  batch_name: string | null;
   last_activity_at: string | null;
   last_inbound_at: string | null;
 };
@@ -212,6 +213,7 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initi
                   csCity={lead.cs_city}
                   csCountry={lead.cs_country}
                   leadStatus={lead.lead_status}
+                  batchName={lead.batch_name}
                   lastActivity={lead.last_activity_at}
                   awaiting={awaitingSet.has(lead.id)}
                   fragment={fragmentMap[lead.id]}
@@ -237,6 +239,7 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initi
                   csCity={lead.cs_city}
                   csCountry={lead.cs_country}
                   leadStatus={lead.lead_status}
+                  batchName={lead.batch_name}
                   lastActivity={lead.last_inbound_at}
                   awaiting
                   fragment={fragmentMap[lead.id]}

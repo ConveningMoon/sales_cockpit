@@ -70,6 +70,15 @@ export async function PATCH(
     update.answer_quality = quality;
   }
 
+  // notes (opcional) — texto libre o null para limpiar
+  if ("notes" in b) {
+    const notes = b.notes;
+    if (notes !== null && typeof notes !== "string") {
+      return NextResponse.json({ error: "notes debe ser string o null." }, { status: 400 });
+    }
+    update.notes = notes === "" ? null : notes;
+  }
+
   if (Object.keys(update).length === 0) {
     return NextResponse.json(
       { error: "No se envió ningún campo válido para actualizar." },

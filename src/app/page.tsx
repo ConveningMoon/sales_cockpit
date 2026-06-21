@@ -17,7 +17,7 @@ export default async function BandejaPage({ searchParams }: { searchParams: Sear
   let leadsQuery: any = supabase
     .from("leads")
     .select(
-      "id, full_name, current_company, current_position, cs_city, cs_country, lead_status, last_activity_at, last_inbound_at"
+      "id, full_name, current_company, current_position, cs_city, cs_country, lead_status, last_activity_at, last_inbound_at, batch:batches(name)"
     );
 
   if (statusFilter) {
@@ -62,9 +62,17 @@ export default async function BandejaPage({ searchParams }: { searchParams: Sear
     });
   }
 
+  // Normalizar el campo batch (join anidado) a batch_name string | null para el componente
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const leads = (allLeads ?? []).map((l: any) => ({
+    ...l,
+    batch_name: (l.batch as { name: string } | null)?.name ?? null,
+    batch: undefined,
+  }));
+
   return (
     <BandejaClient
-      leads={allLeads ?? []}
+      leads={leads}
       awaitingIds={awaitingIds}
       fragmentMap={fragmentMap}
       initialQ={q}
