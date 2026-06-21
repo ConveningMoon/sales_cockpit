@@ -69,6 +69,7 @@ export const DEFAULT_MODELS: Record<AiTaskType, string> = {
   market_data: "claude-sonnet-4-6",
   outreach: "claude-sonnet-4-6",
   draft: "claude-sonnet-4-6",
+  reengagement: "claude-sonnet-4-6",
   other: "claude-haiku-4-5-20251001",
   parse_conversation: "claude-haiku-4-5-20251001",
 };

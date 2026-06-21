@@ -23,7 +23,7 @@ export type DraftStatus = "pending" | "edited" | "sent" | "discarded";
 export type DraftTrigger = "webhook" | "manual";
 export type OutreachKind = "cold" | "fu1" | "fu2";
 export type FollowupStage = "fu1" | "fu2" | "custom";
-export type AiTaskType = "clasificacion" | "market_data" | "outreach" | "draft" | "other" | "parse_conversation";
+export type AiTaskType = "clasificacion" | "market_data" | "outreach" | "draft" | "other" | "parse_conversation" | "reengagement";
 
 export interface Lead {
   id: string;
@@ -54,6 +54,7 @@ export interface Lead {
   last_inbound_at: string | null;
   last_outbound_at: string | null;
   last_activity_at: string | null;
+  status_changed_at: string;
   created_at: string;
   updated_at: string;
 }
