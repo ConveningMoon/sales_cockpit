@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { createServerClient } from "@/lib/supabase/server";
 import { BatchPipeline } from "./_components/BatchPipeline";
 import { BatchAnalytics } from "./_components/BatchAnalytics";
+import { AddLeadsUploader } from "./_components/AddLeadsUploader";
 import type { BatchStatus } from "@/types/database";
 
 export const dynamic = "force-dynamic";
@@ -158,6 +159,14 @@ export default async function BatchPage({ params }: PageProps) {
             errorMessage={(batch.error_message as string | null) ?? null}
             outreachBatchInFlight={Boolean(batch.outreach_batch_id)}
           />
+        </div>
+
+        {/* Agregar leads */}
+        <div className="rounded-xl border border-border/50 bg-card p-5 space-y-3">
+          <h2 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.08em]">
+            Agregar leads
+          </h2>
+          <AddLeadsUploader batchId={batchId} />
         </div>
 
         {/* Analítica de campaña */}
