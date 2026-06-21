@@ -46,22 +46,10 @@ export async function POST(req: NextRequest) {
     const row = rows[i];
     try {
       const leadData = parseLh2LeadRow(row as Record<string, unknown>);
-
-      // Verificar si ya existe para saber si es create o update
-      const { data: existing } = await supabase
-        .from("leads")
-        .select("id")
-        .eq("lh_id", leadData.lh_id!)
-        .maybeSingle();
-
-      const { id } = await upsertLead(supabase, leadData, "without_answer");
-
-      result.leadIds.push(id);
-      if (existing) {
-        result.updated++;
-      } else {
-        result.created++;
-      }
+      const upserted = await upsertLead(supabase, leadData, "without_answer");
+      result.leadIds.push(upserted.id);
+      if (upserted.wasCreated) result.created++;
+      else result.updated++;
     } catch (err) {
       result.errors.push({
         row: i + 1,

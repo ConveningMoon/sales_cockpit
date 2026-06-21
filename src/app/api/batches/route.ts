@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       const leadData = parseLh2LeadRow(validRows[i]);
       const result = await upsertLead(supabase, leadData, "without_answer", batchId);
       leadIds.push(result.id);
-      if (result.lead_status === "without_answer") created++;
+      if (result.wasCreated) created++;
       else updated++;
     } catch (err) {
       errors.push({ row: i + 1, message: err instanceof Error ? err.message : String(err) });

@@ -10,7 +10,7 @@ export async function upsertLead(
   leadData: Lh2LeadData,
   newLeadStatus: LeadStatus = "without_answer",
   batchId?: string | null
-): Promise<{ id: string; lead_status: LeadStatus; full_name: string | null }> {
+): Promise<{ id: string; lead_status: LeadStatus; full_name: string | null; wasCreated: boolean }> {
   const { data: existing } = await supabase
     .from("leads")
     .select("id, lead_status")
@@ -38,6 +38,7 @@ export async function upsertLead(
     id: data.id,
     lead_status: data.lead_status as LeadStatus,
     full_name: data.full_name,
+    wasCreated: !existing,
   };
 }
 
