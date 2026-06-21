@@ -693,6 +693,42 @@ logica: adaptarla.
   en `without_answer` se cuentan como creados. Se corregirá en Push 3 (agregar leads a
   batch existente) con una señal real insert-vs-update desde upsertLead.
 
+**Push 2 completado (2026-06-22).** Motor de seguimiento + notas + label de batch.
+- **Migracion 009** (via MCP `apply_migration`, sin archivo SQL en repo):
+  - `leads.status_changed_at timestamptz NOT NULL DEFAULT now()`: columna + trigger
+    BEFORE UPDATE que actualiza solo cuando `lead_status` cambia realmente; backfill
+    desde `updated_at` para leads existentes.
+  - `ai_usage.task_type` CHECK ampliado con `'reengagement'`.
+- **Types:** `Lead.status_changed_at: string` agregado; `LeadInsert` lo excluye (tiene DEFAULT).
+  `AiTaskType` y `DEFAULT_MODELS` incluyen `'reengagement'` → Sonnet 4.6.
+- **Notas internas (`leads.notes`):** ya existía en DB. `PATCH /api/leads/[id]` acepta `notes`
+  (string | null). `LeadNotes` (client island): textarea con botón "Guardar notas" que aparece
+  solo cuando hay cambios sin guardar. Visible en la columna izquierda de la ficha.
+- **Label de batch de origen:** `LeadProfile` muestra el nombre del batch (o nada para leads
+  manuales) como chip muted junto al grupo. `LeadCard` muestra `batch_name` como texto muted
+  debajo de la ubicación. Las queries de bandeja y ficha usan el join `batch:batches(name)`.
+- **`src/lib/ai/followup.ts`:** espejo de `draft.ts` para re-enganche.
+  - Lee `prompts/reengagement.md` lazy-cacheado.
+  - System prompt = `ITMANO_BASE_SYSTEM_PROMPT + reengagement.md`.
+  - User message: `fu_type` + perfil + hilo completo.
+  - `callAI({ taskType: "reengagement", maxTokens: 512 })` → Sonnet 4.6.
+  - Loguea en `ai_usage` con `lead_id` + `task_type: "reengagement"`.
+  - **NO escribe en `drafts`** — devuelve el texto en memoria (concepto distinto al borrador).
+- **`POST /api/leads/[id]/followup`:** valida `fu_type` (fu1 | fu2); devuelve
+  `{ body, model, fu_type }`.
+- **`/seguimientos` (Server Component, force-dynamic):** lista de vencidos on-demand.
+  - Cadencia: `opener_answered` ≥3d → FU1; `fu1_sent` ≥5d → FU2; `fu2_sent` ≥7d → Cerrar.
+  - Auto-exclusión: si `last_inbound_at > status_changed_at` el lead NO aparece (respondió
+    después del último cambio de estado).
+  - Tres queries paralelas por estado + filtro JS para la comparación de columnas.
+  - Ordenados por `status_changed_at ASC` (más vencidos primero dentro de cada grupo).
+  - Grupo "Cerrar": nota textual + link a ficha; sin botón de generación de FU.
+- **`FollowupGenerator` (client island):** idle → loading (skeleton) → resultado editable
+  con botones Copiar y Regenerar. Mismo patrón visual que `DraftPanel`.
+- **Header de bandeja:** enlace "Seguimientos" junto a "Batches".
+- **`prompts/reengagement.md`:** ya estaba en el repo; ya cubierto por
+  `outputFileTracingIncludes: { "/api/**": ["./prompts/**"] }` en `next.config.ts`. ✅
+
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
@@ -716,8 +752,7 @@ logica: adaptarla.
      Parser determinista cliente-side (sin IA); preview editable. **COMPLETADO.**
    - **5e:** rediseno dark premium del cockpit (paleta, tipografia, tarjetas, badges semanticos,
      gradientes CTA). 4 commits. **COMPLETADO.**
-   - **5b (pendiente):** dropdown de modelo + toggle web search por generacion de borrador;
-     vista follow-ups vencidos.
+   - **5b (pendiente):** dropdown de modelo + toggle web search por generacion de borrador.
 6. **Pipeline batch:**
    - **Push A (Fases 1-3):** migracion 003, endpoints classify + market-data (chunked, cache
      30d), UI `/batches/*` con `BatchPipeline`. **COMPLETADO (2026-06-20).**
@@ -733,6 +768,9 @@ logica: adaptarla.
 8. **Push 1 — sistema de estados v2:** migracion 008 (enum inglés 12 estados), estado 100%
    manual salvo el inicial, search + filtro en bandeja, badge de estado en cards. **COMPLETADO
    (2026-06-21).**
+9. **Push 2 — motor de seguimiento:** migracion 009 (status_changed_at + trigger +
+   reengagement task type), notas internas, label de batch, `/seguimientos` on-demand,
+   `followup.ts` + endpoint, `FollowupGenerator` client island. **COMPLETADO (2026-06-22).**
 
 ---
 
