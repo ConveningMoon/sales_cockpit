@@ -9,10 +9,21 @@ export default async function BandejaPage({ searchParams }: { searchParams: Sear
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.trim() : "";
   const statusFilter = typeof sp.status === "string" ? sp.status.trim() : "";
+  const batchFilter = typeof sp.batch === "string" ? sp.batch.trim() : "";
 
   const supabase = createServerClient();
 
-  // Leads filtrados por search + estado
+  // Batches disponibles para el dropdown de filtro
+  const { data: batchesData } = await supabase
+    .from("batches")
+    .select("id, name")
+    .order("imported_at", { ascending: false });
+  const batches = (batchesData ?? []).map((b) => ({
+    id: b.id as string,
+    name: b.name as string,
+  }));
+
+  // Leads filtrados por search + estado + batch
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let leadsQuery: any = supabase
     .from("leads")
@@ -29,6 +40,10 @@ export default async function BandejaPage({ searchParams }: { searchParams: Sear
       .neq("lead_status", "closed")
       .neq("lead_status", "passive_discard")
       .neq("lead_status", "rejected");
+  }
+
+  if (batchFilter) {
+    leadsQuery = leadsQuery.eq("batch_id", batchFilter);
   }
 
   if (q) {
@@ -77,6 +92,8 @@ export default async function BandejaPage({ searchParams }: { searchParams: Sear
       fragmentMap={fragmentMap}
       initialQ={q}
       initialStatus={statusFilter}
+      initialBatch={batchFilter}
+      batches={batches}
     />
   );
 }

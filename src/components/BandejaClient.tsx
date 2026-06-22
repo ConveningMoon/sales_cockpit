@@ -27,27 +27,33 @@ type Lead = {
   last_inbound_at: string | null;
 };
 
+type Batch = { id: string; name: string };
+
 type Props = {
   leads: Lead[];
   awaitingIds: string[];
   fragmentMap: Record<string, string>;
   initialQ: string;
   initialStatus: string;
+  initialBatch: string;
+  batches: Batch[];
 };
 
-export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initialStatus }: Props) {
+export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initialStatus, initialBatch, batches }: Props) {
   const router = useRouter();
   const awaitingSet = new Set(awaitingIds);
   const awaitingLeads = leads.filter((l) => awaitingSet.has(l.id));
 
   const [inputValue, setInputValue] = useState(initialQ);
   const [selectedStatus, setSelectedStatus] = useState(initialStatus);
+  const [selectedBatch, setSelectedBatch] = useState(initialBatch);
   const isFirstRender = useRef(true);
 
-  function pushUrl(q: string, status: string) {
+  function pushUrl(q: string, status: string, batch: string) {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (status) params.set("status", status);
+    if (batch) params.set("batch", batch);
     const qs = params.toString();
     router.push(qs ? `/?${qs}` : "/", { scroll: false });
   }
@@ -59,7 +65,7 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initi
       return;
     }
     const id = setTimeout(() => {
-      pushUrl(inputValue.trim(), selectedStatus);
+      pushUrl(inputValue.trim(), selectedStatus, selectedBatch);
     }, 350);
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,7 +74,13 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initi
   function handleStatusChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const next = e.target.value;
     setSelectedStatus(next);
-    pushUrl(inputValue.trim(), next); // inmediato para el filtro de estado
+    pushUrl(inputValue.trim(), next, selectedBatch);
+  }
+
+  function handleBatchChange(e: React.ChangeEvent<HTMLSelectElement>) {
+    const next = e.target.value;
+    setSelectedBatch(next);
+    pushUrl(inputValue.trim(), selectedStatus, next);
   }
 
   return (
@@ -171,6 +183,26 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initi
               ))}
             </optgroup>
           </select>
+
+          {/* Filtro por batch */}
+          {batches.length > 0 && (
+            <select
+              value={selectedBatch}
+              onChange={handleBatchChange}
+              className={[
+                "h-8 rounded-lg border border-border/40 px-2 text-xs shrink-0 max-w-[140px]",
+                "bg-background/50 text-foreground",
+                "focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/40",
+                "hover:border-border/70 transition-colors cursor-pointer",
+              ].join(" ")}
+              style={{ colorScheme: "dark" }}
+            >
+              <option value="">All batches</option>
+              {batches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+          )}
         </div>
 
         <Tabs defaultValue="todos">
@@ -212,7 +244,7 @@ export function BandejaClient({ leads, awaitingIds, fragmentMap, initialQ, initi
             <div className="space-y-2">
               {leads.length === 0 && (
                 <p className="text-sm text-muted-foreground py-12 text-center">
-                  {inputValue || selectedStatus
+                  {inputValue || selectedStatus || selectedBatch
                     ? "Sin resultados para esta búsqueda."
                     : 'No hay leads activos. Crea uno con "+ Nuevo lead".'}
                 </p>
