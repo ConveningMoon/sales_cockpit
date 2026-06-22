@@ -1,5 +1,21 @@
 import Link from "next/link";
 import { createServerClient } from "@/lib/supabase/server";
+import {
+  conversationDepthOrdinal,
+  conversationDepthLabel,
+  CONVERSATION_DEPTHS,
+  closingReasonLabel,
+  answerQualityLabel,
+  ANSWER_QUALITIES,
+  statusLabel,
+} from "@/lib/ui-helpers";
+import { DashboardCharts } from "./DashboardCharts";
+import type {
+  ReplyRatePoint,
+  CountPoint,
+  CampaignBarPoint,
+  CostPoint,
+} from "./DashboardCharts";
 
 export const dynamic = "force-dynamic";
 
@@ -22,15 +38,27 @@ interface BatchRow {
   totalLeads: number;
   groupA: number;
   groupB: number;
-  groupNoEscribir: number;
-  sinClasificar: number;
-  msgCount: number;
+  conversionCount: number;   // interested + in_demo + in_strategy + client
+  convDepthAvg: number | null; // ordinal avg 1-5, null si ningún lead tiene valor
   costTotal: number;
 }
+
+const CONVERSION_STATUSES = new Set(["interested", "in_demo", "in_strategy", "client"]);
+
+const STATUS_ORDER = [
+  "without_answer", "opener_answered", "fu1_sent", "fu2_sent",
+  "in_follow_up", "interested", "in_demo", "in_strategy", "client",
+  "closed", "passive_discard", "rejected",
+];
 
 function replyRatePct(s: MessageStats | undefined): string {
   if (!s || !s.sent) return "—";
   return `${((s.replied / s.sent) * 100).toFixed(1)}%`;
+}
+
+function replyRateNum(s: MessageStats | undefined): number | null {
+  if (!s || !s.sent) return null;
+  return parseFloat(((s.replied / s.sent) * 100).toFixed(1));
 }
 
 function pooledRate(batches: BatchRow[], field: keyof Lh2Stats): string {
@@ -84,7 +112,7 @@ export default async function DashboardPage() {
     return (
       <div className="min-h-screen bg-background">
         <DashboardHeader />
-        <main className="mx-auto max-w-5xl px-4 py-8">
+        <main className="mx-auto max-w-6xl px-4 py-8">
           <div className="rounded-xl border border-border/50 bg-card px-6 py-12 text-center">
             <p className="text-sm text-muted-foreground">Sin campañas. Crea tu primer batch.</p>
           </div>
@@ -95,10 +123,10 @@ export default async function DashboardPage() {
 
   const batchIds = batches.map((b) => b.id as string);
 
-  // 2. Leads de todos los batches (solo columnas necesarias para conteos)
+  // 2. Leads — columnas para conteos, analítica y charts
   const { data: allLeadsRaw } = await supabase
     .from("leads")
-    .select("id, batch_id, cs_group")
+    .select("id, batch_id, cs_group, lead_status, closing_reason, answer_quality, conversation_depth")
     .in("batch_id", batchIds);
 
   const allLeads = allLeadsRaw ?? [];
@@ -128,21 +156,7 @@ export default async function DashboardPage() {
     }
   }
 
-  // 4. Mensajes — conteo por lead
-  const leadMsgCount = new Map<string, number>();
-  if (allLeadIds.length > 0) {
-    const { data: msgRows } = await supabase
-      .from("messages")
-      .select("lead_id")
-      .in("lead_id", allLeadIds);
-    for (const row of msgRows ?? []) {
-      const lid = row.lead_id as string | null;
-      if (!lid) continue;
-      leadMsgCount.set(lid, (leadMsgCount.get(lid) ?? 0) + 1);
-    }
-  }
-
-  // 5. Armar filas del dashboard
+  // 4. Armar filas del dashboard
   const rows: BatchRow[] = batches.map((b) => {
     const bId = b.id as string;
     const leadIds = batchLeadIds[bId] ?? [];
@@ -150,10 +164,20 @@ export default async function DashboardPage() {
 
     const groupA = leadsOfBatch.filter((l) => l.cs_group === "A").length;
     const groupB = leadsOfBatch.filter((l) => l.cs_group === "B").length;
-    const groupNoEscribir = leadsOfBatch.filter((l) => l.cs_group === "NO_ESCRIBIR").length;
-    const sinClasificar = leadsOfBatch.filter((l) => !l.cs_group).length;
 
-    const msgCount = leadIds.reduce((acc, lid) => acc + (leadMsgCount.get(lid) ?? 0), 0);
+    const conversionCount = leadsOfBatch.filter((l) =>
+      CONVERSION_STATUSES.has(l.lead_status as string)
+    ).length;
+
+    // Promedio ordinal de conversation_depth (excluye nulls)
+    const depthValues = leadsOfBatch
+      .map((l) => conversationDepthOrdinal(l.conversation_depth as string | null))
+      .filter((v): v is number => v !== null);
+    const convDepthAvg =
+      depthValues.length > 0
+        ? depthValues.reduce((a, v) => a + v, 0) / depthValues.length
+        : null;
+
     const costTotal = leadIds.reduce((acc, lid) => acc + (leadCostMap.get(lid) ?? 0), 0);
 
     return {
@@ -169,9 +193,8 @@ export default async function DashboardPage() {
       totalLeads: leadIds.length,
       groupA,
       groupB,
-      groupNoEscribir,
-      sinClasificar,
-      msgCount,
+      conversionCount,
+      convDepthAvg,
       costTotal,
     };
   });
@@ -179,9 +202,88 @@ export default async function DashboardPage() {
   // Footer — totales
   const totalLeads = rows.reduce((a, r) => a + r.totalLeads, 0);
   const totalCost = rows.reduce((a, r) => a + r.costTotal, 0);
-  const totalMsgs = rows.reduce((a, r) => a + r.msgCount, 0);
-  const weightedDepth = totalLeads > 0 ? totalMsgs / totalLeads : 0;
+  const totalConversion = rows.reduce((a, r) => a + r.conversionCount, 0);
   const weightedCostPerLead = totalLeads > 0 ? totalCost / totalLeads : 0;
+
+  // Promedio ponderado de profundidad (solo filas con dato)
+  const depthRows = rows.filter((r) => r.convDepthAvg !== null);
+  const weightedDepthSum = depthRows.reduce((a, r) => a + (r.convDepthAvg ?? 0) * r.totalLeads, 0);
+  const weightedDepthLeads = depthRows.reduce((a, r) => a + r.totalLeads, 0);
+  const weightedDepth = weightedDepthLeads > 0 ? weightedDepthSum / weightedDepthLeads : null;
+
+  // -----------------------------------------------------------------------
+  // Datos para los charts
+  // -----------------------------------------------------------------------
+
+  // Chart 1: reply rate por campaña
+  const replyRateData: ReplyRatePoint[] = rows
+    .filter((r) => r.lh2Stats)
+    .map((r) => ({
+      name: r.name,
+      opener: replyRateNum(r.lh2Stats?.opener),
+      fu1: replyRateNum(r.lh2Stats?.fu1),
+      fu2: replyRateNum(r.lh2Stats?.fu2),
+    }));
+
+  // Chart 2: razones de cierre global
+  const closingMap = new Map<string, number>();
+  for (const l of allLeads) {
+    const v = l.closing_reason as string | null;
+    if (v) closingMap.set(v, (closingMap.get(v) ?? 0) + 1);
+  }
+  const closingReasonsData: CountPoint[] = [...closingMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, count]) => ({ label: closingReasonLabel(key), count }));
+
+  // Chart 3: calidad de respuesta global
+  const qualityMap = new Map<string, number>();
+  for (const l of allLeads) {
+    const v = l.answer_quality as string | null;
+    if (v) qualityMap.set(v, (qualityMap.get(v) ?? 0) + 1);
+  }
+  const answerQualityData: CountPoint[] = ANSWER_QUALITIES
+    .map((q) => ({ label: answerQualityLabel(q.key), count: qualityMap.get(q.key) ?? 0 }))
+    .filter((d) => d.count > 0);
+
+  // Chart 4: profundidad de conversación global (en orden ordinal)
+  const depthMap = new Map<string, number>();
+  for (const l of allLeads) {
+    const v = l.conversation_depth as string | null;
+    if (v) depthMap.set(v, (depthMap.get(v) ?? 0) + 1);
+  }
+  const convDepthData: CountPoint[] = CONVERSATION_DEPTHS
+    .map((d) => ({
+      label: `${d.ordinal}. ${d.key.split("_").map((w) => w[0].toUpperCase() + w.slice(1)).join(" ")}`,
+      count: depthMap.get(d.key) ?? 0,
+    }))
+    .filter((d) => d.count > 0);
+
+  // Chart 5: embudo de estados global (orden canónico)
+  const statusMap = new Map<string, number>();
+  for (const l of allLeads) {
+    const v = l.lead_status as string;
+    statusMap.set(v, (statusMap.get(v) ?? 0) + 1);
+  }
+  const statusFunnelData: CountPoint[] = STATUS_ORDER
+    .filter((s) => (statusMap.get(s) ?? 0) > 0)
+    .map((s) => ({ label: statusLabel(s), count: statusMap.get(s) ?? 0 }));
+
+  // Chart 6: conversión por campaña
+  const conversionRateData: CampaignBarPoint[] = rows
+    .filter((r) => r.totalLeads > 0)
+    .map((r) => ({
+      name: r.name,
+      value: parseFloat(((r.conversionCount / r.totalLeads) * 100).toFixed(1)),
+    }));
+
+  // Chart 7: costo por campaña
+  const costData: CostPoint[] = rows
+    .filter((r) => r.costTotal > 0)
+    .map((r) => ({
+      name: r.name,
+      costTotal: r.costTotal,
+      costPerLead: r.totalLeads > 0 ? r.costTotal / r.totalLeads : 0,
+    }));
 
   const thCls = "text-left text-[10px] font-semibold text-muted-foreground uppercase tracking-[0.07em] pb-2 px-3 whitespace-nowrap";
   const tdCls = "px-3 py-2.5 text-xs text-foreground whitespace-nowrap";
@@ -192,8 +294,9 @@ export default async function DashboardPage() {
       <DashboardHeader />
 
       <main className="mx-auto max-w-6xl px-4 py-8 space-y-6">
+        {/* Tabla comparativa */}
         <div className="overflow-x-auto rounded-xl border border-border/50 bg-card">
-          <table className="w-full min-w-[800px] border-collapse">
+          <table className="w-full min-w-[820px] border-collapse">
             <thead>
               <tr className="border-b border-border/50">
                 <th className={`${thCls} text-left`}>Campaña</th>
@@ -203,6 +306,7 @@ export default async function DashboardPage() {
                 <th className={`${thCls} text-right`}>Opener</th>
                 <th className={`${thCls} text-right`}>FU1</th>
                 <th className={`${thCls} text-right`}>FU2</th>
+                <th className={`${thCls} text-right`}>Conv.</th>
                 <th className={`${thCls} text-right`}>Profund.</th>
                 <th className={`${thCls} text-right`}>Costo IA</th>
                 <th className={`${thCls} text-right`}>$/lead</th>
@@ -210,7 +314,9 @@ export default async function DashboardPage() {
             </thead>
             <tbody>
               {rows.map((row, i) => {
-                const depth = row.totalLeads > 0 ? row.msgCount / row.totalLeads : 0;
+                const convRate = row.totalLeads > 0
+                  ? ((row.conversionCount / row.totalLeads) * 100).toFixed(1) + "%"
+                  : "—";
                 const costPerLead = row.totalLeads > 0 ? row.costTotal / row.totalLeads : 0;
                 const isLast = i === rows.length - 1;
 
@@ -254,9 +360,15 @@ export default async function DashboardPage() {
                     <td className={tdNum}>{replyRatePct(row.lh2Stats?.opener)}</td>
                     <td className={tdNum}>{replyRatePct(row.lh2Stats?.fu1)}</td>
                     <td className={tdNum}>{replyRatePct(row.lh2Stats?.fu2)}</td>
-                    {/* Profundidad */}
+                    {/* Conversión */}
                     <td className={tdNum}>
-                      {row.totalLeads > 0 ? fmt(depth, 1) : "—"}
+                      <span className={row.conversionCount > 0 ? "text-emerald-400" : "text-muted-foreground/40"}>
+                        {convRate}
+                      </span>
+                    </td>
+                    {/* Profundidad ordinal (excluye nulls) */}
+                    <td className={tdNum}>
+                      {row.convDepthAvg !== null ? fmt(row.convDepthAvg, 1) : "—"}
                     </td>
                     {/* Costo */}
                     <td className={tdNum}>
@@ -285,7 +397,12 @@ export default async function DashboardPage() {
                 <td className={`${tdNum} font-semibold`}>{pooledRate(rows, "fu1")}</td>
                 <td className={`${tdNum} font-semibold`}>{pooledRate(rows, "fu2")}</td>
                 <td className={`${tdNum} font-semibold`}>
-                  {totalLeads > 0 ? fmt(weightedDepth, 1) : "—"}
+                  {totalLeads > 0
+                    ? `${((totalConversion / totalLeads) * 100).toFixed(1)}%`
+                    : "—"}
+                </td>
+                <td className={`${tdNum} font-semibold`}>
+                  {weightedDepth !== null ? fmt(weightedDepth, 1) : "—"}
                 </td>
                 <td className={`${tdNum} font-semibold`}>
                   {totalCost > 0 ? `$${fmt(totalCost, 4)}` : "—"}
@@ -299,8 +416,22 @@ export default async function DashboardPage() {
         </div>
 
         <p className="text-[11px] text-muted-foreground/60 text-center">
-          Reply rates: tasas agrupadas (Σ respondidos / Σ enviados) sobre campañas con datos de LH2. Profundidad: mensajes totales / total leads. Costo: atribuido por lead (clasificación + secuencia + borradores).
+          Reply rates: tasas agrupadas (Σ respondidos / Σ enviados) sobre campañas con datos de LH2.
+          Conversión: (Interested + In Demo + In Strategy + Client) / Total.
+          Profund.: promedio ordinal 1–5 sobre leads con valor registrado (nulos excluidos).
+          Costo: atribuido por lead (clasificación + secuencia + borradores).
         </p>
+
+        {/* Gráficas */}
+        <DashboardCharts
+          replyRateData={replyRateData}
+          closingReasonsData={closingReasonsData}
+          answerQualityData={answerQualityData}
+          convDepthData={convDepthData}
+          statusFunnelData={statusFunnelData}
+          conversionRateData={conversionRateData}
+          costData={costData}
+        />
       </main>
     </div>
   );
