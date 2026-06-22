@@ -760,6 +760,27 @@ logica: adaptarla.
 - **`prompts/reengagement.md`:** ya estaba en el repo; ya cubierto por
   `outputFileTracingIncludes: { "/api/**": ["./prompts/**"] }` en `next.config.ts`. ✅
 
+**Push 4 completado (2026-06-22).** Ultima actividad visible + profundidad manual + filtro batch + charts.
+- **Migracion 011** (via MCP `apply_migration`): `leads.conversation_depth text` — nullable, sin enum en DB; validado contra lista cerrada en el API.
+- **`conversation_depth` — 5 niveles ordinales:**
+  `responded_once(1)`, `basic_exchange(2)`, `deep_conversation(3)`, `asks_about_system(4)`, `requests_call(5)`.
+  Helpers en `ui-helpers.ts`: `CONVERSATION_DEPTHS`, `CONVERSATION_DEPTH_KEYS`, `conversationDepthLabel()`, `conversationDepthOrdinal()`.
+- **`PATCH /api/leads/[id]`:** acepta `conversation_depth` (mismo patron que `answer_quality`).
+- **`ConversationDepthSelector` (client island):** 5 botones con ordinal + descripcion en espanol.
+  Click selecciona/deselecciona; click en el activo = limpiar. Boton "× Limpiar" adicional cuando hay valor. Update optimista + revert en error. Visible en columna izquierda de la ficha, entre LeadTracking y LeadCost.
+- **Ultima actividad:** `formatActivityDate(iso)` en `ui-helpers.ts` — `Intl.DateTimeFormat("es", { weekday:"short", day:"numeric", month:"short", timeZone:"Asia/Yekaterinburg" })`. Reemplaza `timeAgo()` relativo en `LeadCard`. Tambien visible en `LeadProfile` como campo "Ultima actividad". La ficha ya seleccionaba `last_activity_at`; ahora se muestra.
+- **Filtro por batch en bandeja:** `page.tsx` carga todos los batches; nuevo `searchParam.batch` filtra por `batch_id`; `BandejaClient` recibe `initialBatch + batches` y muestra un select "All batches / <nombre>" (solo visible si hay batches). Combinable con search + filtro de estado. `pushUrl` extendido a 3 params.
+- **recharts:** `pnpm add recharts` + `--chart-1..5` CSS vars en `:root` de `globals.css`.
+- **`DashboardCharts` (client):** 7 graficas con recharts, datos recibidos como props del server:
+  1. Reply rate por campana (barras agrupadas opener/FU1/FU2) — solo campanas con lh2_stats.
+  2. Tasa de conversion por campana (barras, verde).
+  3. Costo de IA por campana (barras amber + tooltip $/lead).
+  4. Profundidad de conversacion — distribucion global (barras con colores por nivel).
+  5. Calidad de respuesta — distribucion global (barras horizontales).
+  6. Embudo de estados — global (barras horizontales, orden canonico).
+  7. Razones de cierre — global (barras horizontales, rose).
+- **Dashboard `page.tsx`:** query de leads expandida a `lead_status, closing_reason, answer_quality, conversation_depth`. Tabla actualizada: columna "Conv." (interested+in_demo+in_strategy+client)/total en %, reemplaza "Profund." legacy por promedio ordinal 1-5 (excluye nulls). Footer: pooled convRate global + avg ponderado de profundidad ordinal. Nota de pie ampliada. `DashboardCharts` renderizado al final del main.
+
 **Repositorio remoto:** https://github.com/ConveningMoon/sales_cockpit.git
 
 ---
@@ -805,6 +826,9 @@ logica: adaptarla.
 10. **Push 3 — agregar leads + dashboard:** migracion 010 (lh2_stats), upsertLead wasCreated,
     classify guard flexible, generate idempotente, `add-leads` endpoint + UI, `Lh2StatsForm`,
     `/dashboard` cross-batch. **COMPLETADO (2026-06-22).**
+11. **Push 4 — ultima actividad + profundidad + filtro batch + charts:** migracion 011 (conversation_depth),
+    ConversationDepthSelector (5 niveles ordinales), formatActivityDate (Yekaterinburg), filtro por
+    batch en bandeja, recharts + 7 charts en /dashboard, tabla dashboard actualizada. **COMPLETADO (2026-06-22).**
 
 ---
 
@@ -865,3 +889,25 @@ logica: adaptarla.
   serverless. Flujo verificado: editar `.md` + push + redeploy = prompt actualizado en produccion.
   Cache en memoria (`_draftSystemPrompt`) se limpia en cada cold-start (Vercel destruye instancias
   al redeploy). El placeholder `[ENLACE_DEL_RECURSO]` pasa sin transformacion al borrador.
+
+---
+
+## 14. Cola post-primera-campana
+
+Items identificados para cuando haya datos reales de al menos una campana completa.
+No son compromisos de orden — priorizar segun lo que mas duela en ese momento.
+
+- **5b — Selector de modelo + toggle web search en borrador:** dropdown de modelo en `PasteBox` o
+  `DraftPanel` para override por generacion. Toggle web search. Pendiente desde Slice 5b.
+- **Enriquecimiento opt-in de market data en borrador (decision c):** el modelo senala cuando un
+  dato de mercado reforzaria la respuesta; Dylan aprueba con un clic una busqueda web acotada.
+  Path: cockpit (`generateDraft` + `respuesta-lead.md`), no el pipeline batch.
+- **Recharts — charts per-batch con volumen suficiente:** cuando las campanas tengan >50 leads con
+  datos de profundidad/cierre/calidad, evaluar particion por batch en los charts actualmente
+  globales (profundidad, cierre, calidad). Hoy los charts globales tienen mas sentido.
+- **Export de conversaciones:** boton en la ficha para exportar el hilo completo como texto o CSV.
+- **Bulk status update:** seleccion multiple en la bandeja para cambiar estado a un grupo de leads.
+- **Notificaciones de seguimiento:** en lugar del panel `/seguimientos` on-demand, una vista
+  siempre visible en el header con conteo de vencidos (badge).
+- **Metricas de prompt engineering:** comparativa entre versiones del prompt de outreach usando
+  `ai_usage.context` para taggear variantes.
