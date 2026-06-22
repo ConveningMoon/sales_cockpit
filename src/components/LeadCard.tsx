@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { statusBadgeClass, statusLabel } from "@/lib/ui-helpers";
+import { statusBadgeClass, statusLabel, formatActivityDate } from "@/lib/ui-helpers";
 
 type Props = {
   id: string;
@@ -14,17 +14,6 @@ type Props = {
   awaiting: boolean;
   fragment?: string;
 };
-
-function timeAgo(iso: string | null): string {
-  if (!iso) return "";
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff / 60000);
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  return `${d}d`;
-}
 
 export function LeadCard({
   id,
@@ -104,8 +93,8 @@ export function LeadCard({
           )}
         </div>
 
-        <span className="text-[11px] text-muted-foreground/55 shrink-0 mt-0.5 tabular-nums">
-          {timeAgo(lastActivity)}
+        <span className="text-[11px] text-muted-foreground/55 shrink-0 mt-0.5 whitespace-nowrap">
+          {formatActivityDate(lastActivity)}
         </span>
       </div>
     </Link>
