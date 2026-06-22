@@ -287,8 +287,9 @@ export function DashboardCharts({
   conversionRateData,
   costData,
 }: Props) {
-  const abbrevData = (arr: { name: string; [k: string]: unknown }[]) =>
-    arr.map((d) => ({ ...d, name: abbrev(d.name) }));
+  function abbrevData<T extends { name: string }>(arr: T[]): T[] {
+    return arr.map((d) => ({ ...d, name: abbrev(d.name) }));
+  }
 
   return (
     <div className="space-y-4">
@@ -298,16 +299,16 @@ export function DashboardCharts({
 
       {/* Fila 1: Reply rate (ancho) */}
       <ChartCard title="Reply rate por campaña (%)">
-        <ReplyRateChart data={abbrevData(replyRateData) as ReplyRatePoint[]} />
+        <ReplyRateChart data={abbrevData(replyRateData)} />
       </ChartCard>
 
       {/* Fila 2: Conversión + Costo */}
       <div className="grid gap-4 md:grid-cols-2">
         <ChartCard title="Tasa de conversión por campaña (%)">
-          <ConversionRateChart data={abbrevData(conversionRateData) as CampaignBarPoint[]} />
+          <ConversionRateChart data={abbrevData(conversionRateData)} />
         </ChartCard>
         <ChartCard title="Costo de IA por campaña">
-          <CostChart data={abbrevData(costData) as CostPoint[]} />
+          <CostChart data={abbrevData(costData)} />
         </ChartCard>
       </div>
 
