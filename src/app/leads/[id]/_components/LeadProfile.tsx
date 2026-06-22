@@ -1,9 +1,10 @@
 import { Separator } from "@/components/ui/separator";
-import { groupBadgeClass } from "@/lib/ui-helpers";
+import { groupBadgeClass, formatActivityDate } from "@/lib/ui-helpers";
 import { StatusSelector } from "./StatusSelector";
 import { LeadTracking } from "./LeadTracking";
 import { LeadCost } from "./LeadCost";
 import { LeadNotes } from "./LeadNotes";
+import { ConversationDepthSelector } from "./ConversationDepthSelector";
 
 type Props = {
   leadId: string;
@@ -21,6 +22,8 @@ type Props = {
   leadStatus: string;
   closingReason: string | null;
   answerQuality: string | null;
+  conversationDepth: string | null;
+  lastActivityAt: string | null;
   notes: string | null;
   batchName: string | null;
   costTotal: number;
@@ -43,6 +46,8 @@ export function LeadProfile({
   leadStatus,
   closingReason,
   answerQuality,
+  conversationDepth,
+  lastActivityAt,
   notes,
   batchName,
   costTotal,
@@ -136,6 +141,14 @@ export function LeadProfile({
             </dd>
           </div>
         )}
+        {lastActivityAt && (
+          <div>
+            <dt className="text-[10px] font-medium text-muted-foreground uppercase tracking-[0.08em] mb-0.5">
+              Última actividad
+            </dt>
+            <dd className="text-foreground/70 text-xs">{formatActivityDate(lastActivityAt)}</dd>
+          </div>
+        )}
       </dl>
 
       <Separator className="opacity-40" />
@@ -146,6 +159,11 @@ export function LeadProfile({
         currentClosingReason={closingReason}
         currentAnswerQuality={answerQuality}
       />
+
+      <Separator className="opacity-40" />
+
+      {/* Profundidad de conversación manual */}
+      <ConversationDepthSelector leadId={leadId} current={conversationDepth} />
 
       <Separator className="opacity-40" />
 

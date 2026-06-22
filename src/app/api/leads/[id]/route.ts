@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/server";
 import type { LeadStatus } from "@/types/database";
-import { CLOSING_REASON_KEYS, ANSWER_QUALITY_KEYS } from "@/lib/ui-helpers";
+import { CLOSING_REASON_KEYS, ANSWER_QUALITY_KEYS, CONVERSATION_DEPTH_KEYS } from "@/lib/ui-helpers";
 
 const VALID_STATUSES: LeadStatus[] = [
   "without_answer",
@@ -68,6 +68,18 @@ export async function PATCH(
       );
     }
     update.answer_quality = quality;
+  }
+
+  // conversation_depth (opcional) — clave de lista cerrada o null para limpiar
+  if ("conversation_depth" in b) {
+    const depth = b.conversation_depth;
+    if (depth !== null && (typeof depth !== "string" || !CONVERSATION_DEPTH_KEYS.includes(depth))) {
+      return NextResponse.json(
+        { error: `conversation_depth inválido. Valores permitidos: ${CONVERSATION_DEPTH_KEYS.join(", ")}, o null.` },
+        { status: 400 }
+      );
+    }
+    update.conversation_depth = depth;
   }
 
   // notes (opcional) — texto libre o null para limpiar
