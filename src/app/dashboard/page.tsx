@@ -2,7 +2,6 @@ import Link from "next/link";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   conversationDepthOrdinal,
-  conversationDepthLabel,
   CONVERSATION_DEPTHS,
   closingReasonLabel,
   answerQualityLabel,

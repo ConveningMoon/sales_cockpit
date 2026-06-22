@@ -62,8 +62,8 @@ export interface Lead {
 
 export type LeadInsert = Omit<
   Lead,
-  "id" | "created_at" | "updated_at" | "last_inbound_at" | "last_outbound_at" | "last_activity_at" | "status_changed_at"
->;
+  "id" | "created_at" | "updated_at" | "last_inbound_at" | "last_outbound_at" | "last_activity_at" | "status_changed_at" | "conversation_depth"
+> & { conversation_depth?: string | null };
 
 export interface Message {
   id: string;

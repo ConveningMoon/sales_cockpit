@@ -84,7 +84,6 @@ export async function POST(
 
   const leadCount = realCount ?? (batch.lead_count as number | null) ?? 0;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const batchUpdate: Record<string, unknown> = { lead_count: leadCount };
 
   // Si hay leads nuevos: pasar a classifying para que el pipeline pueda procesar los nuevos.
