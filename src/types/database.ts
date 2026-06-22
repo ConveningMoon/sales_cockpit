@@ -47,6 +47,7 @@ export interface Lead {
   lead_status: LeadStatus;
   closing_reason: string | null;
   answer_quality: string | null;
+  conversation_depth: string | null;
   score: number | null;
   batch_id: string | null;
   notes: string | null;

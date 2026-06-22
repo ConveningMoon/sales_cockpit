@@ -97,6 +97,48 @@ export function answerQualityBadgeClass(key: string): string {
   return map[key] ?? "bg-zinc-800 text-zinc-300 border border-zinc-700";
 }
 
+// ---------------------------------------------------------------------------
+// Profundidad de conversación manual (5 niveles ordenados, ordinal 1–5)
+// ---------------------------------------------------------------------------
+
+export const CONVERSATION_DEPTHS: {
+  key: string;
+  ordinal: number;
+  label: string;
+  description: string;
+}[] = [
+  { key: "responded_once",    ordinal: 1, label: "Responded Once",    description: "Respondió una sola vez con algo sólido (no «gracias» ni genérico)." },
+  { key: "basic_exchange",    ordinal: 2, label: "Basic Exchange",     description: "Varios mensajes cortos de ida y vuelta; conversación básica." },
+  { key: "deep_conversation", ordinal: 3, label: "Deep Conversation",  description: "Conversación profunda y sostenida." },
+  { key: "asks_about_system", ordinal: 4, label: "Asks About System",  description: "Pide explicaciones del sistema y del modo de trabajo." },
+  { key: "requests_call",     ordinal: 5, label: "Requests Call",      description: "Pide una llamada o acepta la demo." },
+];
+
+export const CONVERSATION_DEPTH_KEYS = CONVERSATION_DEPTHS.map((d) => d.key);
+
+export function conversationDepthLabel(key: string | null): string {
+  if (!key) return "Sin registrar";
+  return CONVERSATION_DEPTHS.find((d) => d.key === key)?.label ?? key;
+}
+
+export function conversationDepthOrdinal(key: string | null): number | null {
+  if (!key) return null;
+  return CONVERSATION_DEPTHS.find((d) => d.key === key)?.ordinal ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Formato de fecha de última actividad — Yekaterinburg (UTC+5), sin hora
+// ---------------------------------------------------------------------------
+export function formatActivityDate(iso: string | null): string {
+  if (!iso) return "—";
+  return new Intl.DateTimeFormat("es", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Yekaterinburg",
+  }).format(new Date(iso));
+}
+
 export function taskTypeLabel(taskType: string): string {
   const map: Record<string, string> = {
     clasificacion:      "Clasificación",
