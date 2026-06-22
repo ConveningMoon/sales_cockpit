@@ -107,7 +107,7 @@ function ReplyRateChart({ data }: { data: ReplyRatePoint[] }) {
         />
         <Tooltip
           contentStyle={tooltipStyle}
-          formatter={(v: number) => [`${v?.toFixed(1)}%`]}
+          formatter={(v) => [`${(v as number | undefined)?.toFixed(1) ?? ""}%`]}
           cursor={{ fill: "hsl(238 15% 22% / 0.4)" }}
         />
         <Legend
@@ -161,7 +161,7 @@ function HorizontalBarChart({
         <Tooltip
           contentStyle={tooltipStyle}
           cursor={{ fill: "hsl(238 15% 22% / 0.4)" }}
-          formatter={xFormatter ? (v: number) => [xFormatter(v)] : undefined}
+          formatter={xFormatter ? (v) => [xFormatter(v as number)] : undefined}
         />
         <Bar dataKey="count" fill={color} radius={[0, 3, 3, 0]} />
       </BarChart>
@@ -230,7 +230,7 @@ function ConversionRateChart({ data }: { data: CampaignBarPoint[] }) {
         />
         <Tooltip
           contentStyle={tooltipStyle}
-          formatter={(v: number) => [`${v?.toFixed(1)}%`, "Conversión"]}
+          formatter={(v) => [`${(v as number | undefined)?.toFixed(1) ?? ""}%`, "Conversión"]}
           cursor={{ fill: "hsl(238 15% 22% / 0.4)" }}
         />
         <Bar dataKey="value" fill={chartColor(2)} radius={[3, 3, 0, 0]} name="Conversión" />
@@ -261,10 +261,13 @@ function CostChart({ data }: { data: CostPoint[] }) {
         <Tooltip
           contentStyle={tooltipStyle}
           cursor={{ fill: "hsl(238 15% 22% / 0.4)" }}
-          formatter={(v: number, name: string) => [
-            name === "costTotal" ? `$${v.toFixed(4)}` : `$${v.toFixed(4)}/lead`,
-            name === "costTotal" ? "Costo total" : "$/lead",
-          ]}
+          formatter={(v, name) => {
+            const n = (v as number) ?? 0;
+            return [
+              (name as string) === "costTotal" ? `$${n.toFixed(4)}` : `$${n.toFixed(4)}/lead`,
+              (name as string) === "costTotal" ? "Costo total" : "$/lead",
+            ];
+          }}
         />
         <Bar dataKey="costTotal" fill={chartColor(3)} radius={[3, 3, 0, 0]} name="costTotal" />
       </BarChart>
