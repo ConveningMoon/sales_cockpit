@@ -73,6 +73,13 @@ html {
 
     /* Gradiente de marca: azul → púrpura. Usar solo en acentos (badges, CTAs) */
     --gradient-brand: linear-gradient(135deg, hsl(235 85% 65%), hsl(268 78% 65%));
+
+    /* Paleta de gráficas (recharts) */
+    --chart-1: 248 82% 67%;   /* indigo/primary */
+    --chart-2: 162 84% 45%;   /* emerald */
+    --chart-3: 38 92% 50%;    /* amber */
+    --chart-4: 271 91% 65%;   /* violet */
+    --chart-5: 199 89% 48%;   /* sky */
   }
 
   * {
